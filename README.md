@@ -1,17 +1,19 @@
 # 慧川 ComfyUI 工作台
 
-把局域网里的 ComfyUI（`http://192.168.0.172:7177`）包成一套类似即梦/labnana 的深色工作台：首页对话式生成、生成过程流、资产库、共享盘、内嵌原版 ComfyUI 工作流页。
+把局域网里的 ComfyUI（`http://192.168.0.172:7177`）包成一套类似即梦/labnana 的深色工作台：首页对话式生成、生成过程流、资产库、共享盘、文档词库、内嵌原版 ComfyUI 工作流页。
 
 前端是单文件 `comfy_web/index.html`，后端是纯标准库的 `comfy_web/server.py`（Python 3.9+，无第三方依赖）。
+
+所有记录、文档都存在**后端这一台机器**上（`comfy_web/data/`），同一局域网里任何电脑打开 `http://<这台机器IP>:8787` 登录后，看到的是**同一份生成记录和同一批文档**；每条记录还会标注是哪台机器发起的（`origin` 字段）。
 
 ## 目录
 
 ```
 comfy_web/
-  server.py            后端：出图、任务轮询、资产库、共享盘、/comfy/* 反代
+  server.py            后端：出图、任务轮询、资产库、共享盘、文档解析、/comfy/* 反代
   index.html           前端（单文件，无构建）
   config.example.json  配置模板，复制成 config.local.json 后填真实值
-  data/                运行数据（records.json、auth.json），不进仓库
+  data/                运行数据（records.json、auth.json、docs/），不进仓库
 comfy_wf/              从 ComfyUI 拉下来的 16 个工作流（后端启动时同步）
 comfy_gen.py           ComfyUI API 客户端 + UI 工作流转 API 格式
 docs/index.html        GitHub Pages 版（由 tools/build-docs.ps1 生成）

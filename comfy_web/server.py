@@ -15,9 +15,12 @@ import argparse
 import base64
 import collections
 import copy
+import csv
+import io
 import json
 import mimetypes
 import os
+import re
 import secrets
 import socket
 import sys
@@ -27,6 +30,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import zipfile
+import xml.etree.ElementTree as ET
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -395,6 +400,227 @@ class Store:
         with _lock:
             self.items = [i for i in self.items if i.get("prompt_id") != prompt_id]
             self.save()
+
+
+# ============================ 文档库（上传表格/文本，解析成可复制的词条）============================
+
+DOCS_DIR = os.path.join(DATA_DIR, "docs")
+DOC_FILES = os.path.join(DOCS_DIR, "files")
+DOC_INDEX = os.path.join(DOCS_DIR, "index.json")
+MAX_DOC_BYTES = 40 * 1024 * 1024      # 单份文档上限 40MB
+DOC_MAX_ROWS = 5000                   # 解析后最多保留的行
+DOC_MAX_CELL = 3000                   # 单个单元格最多字符
+DOC_TEXT_EXT = {".txt", ".md", ".markdown", ".csv", ".tsv", ".log", ".srt", ".json"}
+DOC_SHEET_EXT = {".xlsx", ".xlsm"}
+DOC_WORD_EXT = {".docx"}
+DOC_KEEP_EXT = DOC_TEXT_EXT | DOC_SHEET_EXT | DOC_WORD_EXT | {".pdf", ".doc", ".xls"}
+
+XLSX_NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+WORD_NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+
+
+def _xlsx_col(ref):
+    """A1 -> 0, B7 -> 1"""
+    m = re.match(r"([A-Z]+)", ref or "")
+    if not m:
+        return 0
+    n = 0
+    for ch in m.group(1):
+        n = n * 26 + (ord(ch) - 64)
+    return n - 1
+
+
+def parse_xlsx(raw):
+    """纯标准库把 xlsx 拆成 [{name, rows[[...]]}]"""
+    z = zipfile.ZipFile(io.BytesIO(raw))
+    shared = []
+    if "xl/sharedStrings.xml" in z.namelist():
+        root = ET.fromstring(z.read("xl/sharedStrings.xml"))
+        for si in root.findall("m:si", XLSX_NS):
+            shared.append("".join(t.text or "" for t in si.iter(f"{{{XLSX_NS['m']}}}t")))
+    wb = ET.fromstring(z.read("xl/workbook.xml"))
+    sheets = []
+    sh_el = wb.find("m:sheets", XLSX_NS)
+    names = [s.get("name") or f"Sheet{i}" for i, s in
+             enumerate(sh_el if sh_el is not None else [], 1)]
+    for i, nm in enumerate(names, 1):
+        p = f"xl/worksheets/sheet{i}.xml"
+        if p not in z.namelist():
+            continue
+        sh = ET.fromstring(z.read(p))
+        rows = []
+        for row in sh.iter(f"{{{XLSX_NS['m']}}}row"):
+            cells = {}
+            for c in row.findall("m:c", XLSX_NS):
+                t = c.get("t")
+                v = c.find("m:v", XLSX_NS)
+                inline = c.find("m:is", XLSX_NS)
+                if t == "s" and v is not None:
+                    try:
+                        txt = shared[int(v.text)]
+                    except Exception:            # noqa: BLE001
+                        txt = ""
+                elif inline is not None:
+                    txt = "".join(x.text or "" for x in inline.iter(f"{{{XLSX_NS['m']}}}t"))
+                else:
+                    txt = v.text if v is not None else ""
+                txt = (txt or "").strip()[:DOC_MAX_CELL]
+                if txt:
+                    cells[_xlsx_col(c.get("r"))] = txt
+            if cells:
+                rows.append([cells.get(j, "") for j in range(max(cells) + 1)])
+            if len(rows) >= DOC_MAX_ROWS:
+                break
+        sheets.append({"name": nm, "rows": rows})
+    return sheets
+
+
+def parse_docx(raw):
+    """取 word/document.xml 里的段落文本"""
+    z = zipfile.ZipFile(io.BytesIO(raw))
+    root = ET.fromstring(z.read("word/document.xml"))
+    rows = []
+    for p in root.iter(f"{{{WORD_NS['w']}}}p"):
+        txt = "".join(t.text or "" for t in p.iter(f"{{{WORD_NS['w']}}}t")).strip()
+        if txt:
+            rows.append([txt[:DOC_MAX_CELL]])
+        if len(rows) >= DOC_MAX_ROWS:
+            break
+    return [{"name": "正文", "rows": rows}]
+
+
+def parse_text(raw, ext):
+    data = raw
+    for enc in ("utf-8", "utf-8-sig", "gb18030"):
+        try:
+            text = data.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        text = data.decode("utf-8", "replace")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    if ext in (".csv", ".tsv"):
+        delim = "\t" if ext == ".tsv" else ","
+        rows = []
+        try:
+            for r in csv.reader(io.StringIO(text), delimiter=delim):
+                cells = [(c or "").strip()[:DOC_MAX_CELL] for c in r]
+                if cells:
+                    rows.append(cells)
+                if len(rows) >= DOC_MAX_ROWS:
+                    break
+        except Exception:                        # noqa: BLE001
+            rows = []
+        return [{"name": ext.lstrip(".").upper(), "rows": rows}]
+    rows = [[ln.strip()[:DOC_MAX_CELL]] for ln in text.split("\n") if ln.strip()]
+    return [{"name": "文本", "rows": rows[:DOC_MAX_ROWS]}]
+
+
+class DocStore:
+    """data/docs/index.json 存元信息，原文件放 data/docs/files/"""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.items = []
+        os.makedirs(DOC_FILES, exist_ok=True)
+        self.load()
+
+    def load(self):
+        if os.path.exists(DOC_INDEX):
+            try:
+                with open(DOC_INDEX, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self.items = data.get("items", []) if isinstance(data, dict) else data
+            except Exception:                    # noqa: BLE001
+                self.items = []
+
+    def save(self):
+        tmp = DOC_INDEX + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"items": self.items}, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, DOC_INDEX)
+
+    def add(self, name, raw):
+        ext = os.path.splitext(name)[1].lower()
+        if ext not in DOC_KEEP_EXT:
+            raise ValueError(f"暂不支持 {ext or '这种'} 格式（可用 xlsx/csv/txt/md/docx/json/pdf）")
+        if len(raw) > MAX_DOC_BYTES:
+            raise ValueError("文件超过 40MB")
+        did = uuid.uuid4().hex[:12]
+        safe = re.sub(r"[^\w\u4e00-\u9fa5.\-]+", "_", name)[:120] or ("doc" + ext)
+        path = os.path.join(DOC_FILES, f"{did}_{safe}")
+        with open(path, "wb") as f:
+            f.write(raw)
+        sheets, error = [], ""
+        try:
+            if ext in DOC_SHEET_EXT:
+                sheets = parse_xlsx(raw)
+            elif ext in DOC_WORD_EXT:
+                sheets = parse_docx(raw)
+            elif ext in DOC_TEXT_EXT:
+                sheets = parse_text(raw, ext)
+            else:
+                error = "该格式只存档，暂不解析正文"
+        except Exception as e:                   # noqa: BLE001
+            error = f"{type(e).__name__}: {e}"
+        rows_total = sum(len(s["rows"]) for s in sheets)
+        item = {
+            "id": did, "name": name, "ext": ext, "size": len(raw),
+            "created": time.time(), "path": os.path.basename(path),
+            "rows": rows_total, "error": error,
+            "sheets": [{"name": s["name"], "rows": len(s["rows"])} for s in sheets],
+        }
+        with self.lock:
+            self.items.insert(0, item)
+            self.save()
+        return item
+
+    def find(self, did):
+        return next((i for i in self.items if i.get("id") == did), None)
+
+    def content(self, did):
+        it = self.find(did)
+        if not it:
+            raise KeyError(did)
+        path = os.path.join(DOC_FILES, it["path"])
+        if not os.path.exists(path):
+            raise FileNotFoundError(it["name"])
+        with open(path, "rb") as f:
+            raw = f.read()
+        ext = it.get("ext") or ""
+        if ext in DOC_SHEET_EXT:
+            sheets = parse_xlsx(raw)
+        elif ext in DOC_WORD_EXT:
+            sheets = parse_docx(raw)
+        elif ext in DOC_TEXT_EXT:
+            sheets = parse_text(raw, ext)
+        else:
+            sheets = []
+        return {"id": did, "name": it["name"], "ext": ext, "sheets": sheets,
+                "error": it.get("error", "")}
+
+    def raw_path(self, did):
+        it = self.find(did)
+        if not it:
+            raise KeyError(did)
+        return os.path.join(DOC_FILES, it["path"]), it
+
+    def drop(self, did):
+        with self.lock:
+            it = self.find(did)
+            if not it:
+                return False
+            try:
+                os.remove(os.path.join(DOC_FILES, it["path"]))
+            except Exception:                    # noqa: BLE001
+                pass
+            self.items = [i for i in self.items if i.get("id") != did]
+            self.save()
+        return True
+
+
+DOCS = DocStore()
 
 
 # ============================ 局域网共享（FileShare Pro）============================
@@ -887,7 +1113,7 @@ def reconcile_stale():
 
 
 def submit_one(*, workflow, text, image=None, images=None, aspect, megapixels, width, height,
-               seed, lora, prefix):
+               seed, lora, prefix, origin=None):
     caps = REG.caps_of(workflow)
     if not caps.get("ok"):
         raise ComfyError(400, f"工作流不可用：{caps.get('error')}")
@@ -904,7 +1130,7 @@ def submit_one(*, workflow, text, image=None, images=None, aspect, megapixels, w
         "id": pid, "prompt_id": pid, "workflow": workflow, "prompt": text,
         "aspect": aspect, "megapixels": megapixels, "width": width, "height": height,
         "seed": seed, "image": (names or [None])[0], "images": names, "status": "queued",
-        "created": time.time(), "files": [],
+        "created": time.time(), "files": [], "origin": origin or "",
     }
     STORE.add(item)
     threading.Thread(target=watch, args=(pid,), daemon=True).start()
@@ -1052,6 +1278,11 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "未登录或登录已失效", "need_login": True}, 401)
         return False
 
+    def _origin(self):
+        """提交方 IP，用于在工作台里区分是哪台电脑发起的"""
+        fwd = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        return fwd or (self.client_address[0] if self.client_address else "")
+
     # ---------- GET ----------
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
@@ -1099,6 +1330,42 @@ class Handler(BaseHTTPRequestHandler):
 
             if path == "/api/workflows":
                 return self._json({"workflows": REG.summary()})
+
+            # ---- 文档库 ----
+            if path == "/api/docs":
+                return self._json({"items": DOCS.items})
+
+            if path == "/api/doc":
+                did = (q.get("id") or [""])[0]
+                if not did:
+                    return self._json({"error": "missing id"}, 400)
+                try:
+                    return self._json(DOCS.content(did))
+                except KeyError:
+                    return self._json({"error": "文档不存在"}, 404)
+                except FileNotFoundError as e:
+                    return self._json({"error": f"原文件丢失：{e}"}, 404)
+
+            if path == "/api/doc/raw":
+                did = (q.get("id") or [""])[0]
+                if not did:
+                    return self._json({"error": "missing id"}, 400)
+                try:
+                    fp, it = DOCS.raw_path(did)
+                except KeyError:
+                    return self._json({"error": "文档不存在"}, 404)
+                with open(fp, "rb") as f:
+                    data = f.read()
+                ctype = mimetypes.guess_type(it["name"])[0] or "application/octet-stream"
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Content-Disposition",
+                                 "attachment; filename*=UTF-8''"
+                                 + urllib.parse.quote(it["name"]))
+                self.end_headers()
+                self.wfile.write(data)
+                return
 
             if path == "/api/img":
                 fn = (q.get("filename") or [""])[0]
@@ -1161,6 +1428,7 @@ class Handler(BaseHTTPRequestHandler):
     # ---------- POST ----------
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         try:
             if path.startswith("/comfy/"):
                 return self._proxy_comfy("POST")
@@ -1176,6 +1444,26 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/api/") and path not in self.OPEN_PATHS:
                 if not self._guard():
                     return
+
+            if path == "/api/doc/upload":
+                name = (q.get("name") or [""])[0].strip()
+                raw = self._body()
+                if not name:
+                    return self._json({"error": "缺少文件名"}, 400)
+                if not raw:
+                    return self._json({"error": "文件是空的"}, 400)
+                try:
+                    item = DOCS.add(name, raw)
+                except ValueError as e:
+                    return self._json({"error": str(e)}, 400)
+                return self._json({"ok": True, "item": item})
+
+            if path == "/api/doc/delete":
+                p = self._payload()
+                did = p.get("id") or ""
+                if not did:
+                    return self._json({"error": "missing id"}, 400)
+                return self._json({"ok": DOCS.drop(did)})
 
             if path == "/api/upload":
                 raw = self._body()
@@ -1198,7 +1486,8 @@ class Handler(BaseHTTPRequestHandler):
                     text=(p.get("prompt") or "").strip(),
                     image=p.get("image"), images=p.get("images"), aspect=p.get("aspect"),
                     megapixels=p.get("megapixels"), width=p.get("width"), height=p.get("height"),
-                    seed=p.get("seed"), lora=p.get("lora"), prefix="comfy_ui")
+                    seed=p.get("seed"), lora=p.get("lora"), prefix="comfy_ui",
+                    origin=self._origin())
                 return self._json({"prompt_id": pid})
 
             if path == "/api/batch":
@@ -1214,7 +1503,7 @@ class Handler(BaseHTTPRequestHandler):
                             text=text, image=p.get("image"), images=p.get("images"), aspect=p.get("aspect"),
                             megapixels=p.get("megapixels"), width=p.get("width"),
                             height=p.get("height"), seed=p.get("seed"),
-                            lora=p.get("lora"), prefix="comfy_ui")
+                            lora=p.get("lora"), prefix="comfy_ui", origin=self._origin())
                         ids.append(pid)
                     except ComfyError as e:
                         errs.append(f"{text[:24]}… → {e}")

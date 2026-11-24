@@ -157,6 +157,39 @@
   .fcard .nm{color:var(--text);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .fcard .acts{display:flex;gap:6px;padding:6px 11px 10px}
   .fcard .acts .btn{flex:1;font-size:11px;padding:6px 4px}
+
+  /* ---------- 文档页 ---------- */
+  #docsView{position:fixed;left:76px;top:0;right:0;bottom:0;background:var(--bg);z-index:32;display:none;flex-direction:column}
+  #docsView.show{display:flex}
+  .doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:14px}
+  .dcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 13px;display:flex;flex-direction:column;gap:8px;transition:border-color .16s,transform .16s}
+  .dcard:hover{border-color:#3b3b47;transform:translateY(-1px)}
+  .dcard .dt{display:flex;align-items:center;gap:9px;min-width:0}
+  .dcard .dic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:#141a27;border:1px solid #232a3b;font-size:13px;color:#a9bce4;flex:0 0 auto}
+  .dcard .dn{font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dcard .dmeta{font-size:11px;color:var(--dim);display:flex;gap:9px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+  .dcard .dprev{font-size:11.5px;color:#9a9aa6;line-height:1.62;max-height:54px;overflow:hidden}
+  .dcard .dacts{display:flex;gap:6px;margin-top:2px}
+  .dcard .dacts .btn{flex:1;font-size:11px;padding:5px 4px}
+  .doc-drop{border:1px dashed #33333d;border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;font-size:12px;color:var(--dim);margin-bottom:16px}
+  .doc-drop.over{border-color:var(--gold);color:#e5cd9a;background:rgba(200,160,60,.06)}
+  .doc-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .doc-search{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+  .doc-search input{flex:1;background:#101014;border:1px solid #26262e;border-radius:9px;padding:7px 11px;color:var(--text);font-size:12px;font-family:inherit;outline:none}
+  .doc-search input:focus{border-color:#3d5a94}
+  .doc-modal{position:fixed;inset:0;background:rgba(0,0,0,.66);z-index:70;display:none;align-items:center;justify-content:center;padding:22px}
+  .doc-modal.show{display:flex}
+  .doc-panel{background:#0b0b0e;border:1px solid #2a2a33;border-radius:14px;width:min(1040px,94vw);height:min(88vh,880px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.6)}
+  .doc-ph{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #1e1e25}
+  .doc-ph h3{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .doc-pb{flex:1;overflow-y:auto;padding:10px 16px 18px;min-height:0}
+  .doc-row{display:flex;gap:9px;padding:9px 11px;border:1px solid #1d1d24;border-radius:9px;margin-bottom:8px;align-items:flex-start;background:#0f0f13}
+  .doc-row:hover{border-color:#2d2d38}
+  .doc-row .rtxt{flex:1;font-size:12px;line-height:1.75;color:#c8c8d2;white-space:pre-wrap;word-break:break-word;max-height:98px;overflow:hidden}
+  .doc-row.open .rtxt{max-height:none}
+  .doc-row .rmore{font-size:10.5px;color:#8298c9;cursor:pointer;white-space:nowrap}
+  .doc-row .racts{display:flex;flex-direction:column;gap:5px;flex:0 0 auto}
+  .doc-row .racts .btn{font-size:10.5px;padding:4px 9px;white-space:nowrap}
   .chat-wrap{flex:1;display:flex;flex-direction:column;min-height:0}
   .chat-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 0 14px}
   .bub{max-width:72%;padding:9px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-size:12.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
@@ -610,6 +643,10 @@
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="5" rx="1.4"/><rect x="15" y="4" width="6" height="5" rx="1.4"/><rect x="9" y="15" width="6" height="5" rx="1.4"/><path d="M6 9v3h12v-3M12 12v3"/></svg>
       <span>工作流</span>
     </div>
+    <div class="nav-item" id="navDocs" onclick="openDocs()">
+      <svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
+      <span>文档</span>
+    </div>
     <div class="nav-item" id="navShare" onclick="openShare()">
       <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="6" r="2.6"/><circle cx="18" cy="18" r="2.6"/><path d="M8.4 10.8L15.6 7.2M8.4 13.2L15.6 16.8"/></svg>
       <span>共享</span>
@@ -834,6 +871,47 @@
     <div id="clipList"></div>
   </div>
 </section>
+
+<!-- 文档页 -->
+<section id="docsView">
+  <div class="sv-head">
+    <div>
+      <div class="title">文档</div>
+      <div class="sub">
+        <span class="cap" id="docCount">加载中…</span>
+        <span style="color:var(--dim)">上传表格/文本，正文可直接填进对话框生成</span>
+      </div>
+    </div>
+    <div class="grow"></div>
+    <button class="btn primary" onclick="docPick.click()">＋ 上传文档</button>
+    <input type="file" id="docPick" multiple style="display:none" onchange="uploadDocs(this.files)">
+    <button class="btn" onclick="closeDocs()">返回资产库</button>
+  </div>
+  <div class="sv-body">
+    <div class="doc-drop" id="docDrop">
+      <span style="font-size:18px">⇪</span>
+      <span>把 xlsx / csv / txt / md / docx / json / pdf 拖到这里，或点右上角上传（单份 ≤ 40MB）</span>
+    </div>
+    <div class="doc-grid" id="docGrid"></div>
+    <div class="empty" id="docEmpty" style="display:none">
+      <b>文档库还是空的</b>上传一份词表或文案文档，就能在这里按行取用
+    </div>
+  </div>
+</section>
+
+<!-- 文档正文弹层 -->
+<div class="doc-modal" id="docModal" onclick="if(event.target===this)closeDoc()">
+  <div class="doc-panel">
+    <div class="doc-ph">
+      <h3 id="docTitle">文档</h3>
+      <span class="cap" id="docMeta" style="color:var(--dim)"></span>
+      <div class="grow"></div>
+      <button class="btn" id="docDlBtn" onclick="docDownload()">下载原文件</button>
+      <button class="btn" onclick="closeDoc()">关闭</button>
+    </div>
+    <div class="doc-pb" id="docBody"></div>
+  </div>
+</div>
 
 <div class="drawer-mask" id="mask" onclick="closeDrawer()"></div>
 <aside class="drawer" id="drawer">
@@ -1096,7 +1174,7 @@ async function boot(){
   if(!st || !st.authed){ showLogin(st||null); return; }
   hideLogin();
   if(st.default_user && $('lgUser')) $('lgUser').value=st.default_user;
-  await load(); openHome(); health(); setInterval(health,12000);
+  await load(); openHome(); health(); setInterval(health,12000); startAutoSync();
 }
 
 // ---------- 加载 ----------
@@ -1221,6 +1299,7 @@ function cardHtml(it){
       <div class="meta" style="padding:9px 0 0">
         ${it.aspect?`<span class="tag">${ratioShort(it.aspect)}</span>`:''}
         ${it.megapixels?`<span class="tag">${(+it.megapixels).toFixed(1)}MP</span>`:''}
+        ${it.origin?`<span class="tag" title="发起生成的设备">${escapeHtml(it.origin)}</span>`:''}
         <span class="grow"></span><span>${fmtTime(it.created)}</span>
       </div>
     </div></div>`;
@@ -1337,8 +1416,221 @@ function quickGen(){
 }
 
 function setNav(id){
-  ['navHome','navLib','navShare','navGen','navFlow'].forEach(k=>{ const e=$(k); if(e) e.classList.remove('active'); });
+  ['navHome','navLib','navShare','navGen','navFlow','navDocs'].forEach(k=>{ const e=$(k); if(e) e.classList.remove('active'); });
   const e=$(id); if(e) e.classList.add('active');
+}
+
+/* ---------- 文档库 ---------- */
+let docList=[], docCur=null, docSheetIdx=0, docQuery='', docRowsView=[];
+const DOC_ICON={'.xlsx':'▦','.xlsm':'▦','.csv':'▦','.tsv':'▦','.docx':'▤','.pdf':'▣','.md':'✎','.txt':'✎','.json':'{}'};
+const docIcon=e=>DOC_ICON[(e||'').toLowerCase()]||'▢';
+function docSize(n){
+  n=n||0;
+  if(n>=1048576) return (n/1048576).toFixed(1)+' MB';
+  return Math.max(1,Math.round(n/1024))+' KB';
+}
+
+async function openDocs(){
+  if(typeof setSplit==='function') setSplit(false);
+  ['homeView','genView','shareView','flowView'].forEach(id=>{ const e=$(id); if(e) e.classList.remove('show'); });
+  if(genTimer){ clearInterval(genTimer); genTimer=null; }
+  if(typeof shareTimer!=='undefined' && shareTimer){ clearInterval(shareTimer); shareTimer=null; }
+  if($('composer')) $('composer').style.display='none';
+  $('docsView').classList.add('show');
+  setNav('navDocs');
+  bindDocDrop();
+  await loadDocs();
+  animView($('docsView'));
+}
+function closeDocs(){ $('docsView').classList.remove('show'); showLibrary(); }
+
+let docDropBound=false;
+function bindDocDrop(){
+  if(docDropBound) return; docDropBound=true;
+  const v=$('docsView'), hint=$('docDrop');
+  const hasFiles=e=>e.dataTransfer && [...(e.dataTransfer.types||[])].includes('Files');
+  v.addEventListener('dragenter',e=>{ if(hasFiles(e)){ e.preventDefault(); hint.classList.add('over'); } });
+  v.addEventListener('dragover',e=>{ if(hasFiles(e)){ e.preventDefault(); hint.classList.add('over'); } });
+  v.addEventListener('dragleave',e=>{ if(!e.relatedTarget||!v.contains(e.relatedTarget)) hint.classList.remove('over'); });
+  v.addEventListener('drop',e=>{ e.preventDefault(); hint.classList.remove('over'); uploadDocs(e.dataTransfer.files); });
+}
+
+/* 多台电脑共用一套记录：每 8 秒静默拉一次，只在内容变化时重绘 */
+let autoSyncTimer=null, syncSig='';
+function syncSignature(st){
+  const items=(st.items||[]).slice(0,24).map(i=>i.prompt_id+':'+(i.status||''));
+  return items.join('|');
+}
+function startAutoSync(){
+  if(autoSyncTimer) return;
+  autoSyncTimer=setInterval(async()=>{
+    if(document.hidden) return;
+    if($('loginView') && $('loginView').classList.contains('show')) return;
+    if($('docsView') && $('docsView').classList.contains('show')) return;
+    if($('docModal') && $('docModal').classList.contains('show')) return;
+    try{
+      const r=await fetch('/api/state');
+      if(!r.ok) return;
+      const st=await r.json();
+      const sig=syncSignature(st);
+      if(sig!==syncSig){
+        syncSig=sig;
+        STATE=st;
+        renderHome();
+        render();
+        if($('genView').classList.contains('show') && !genTimer) renderThread(false);
+      }
+    }catch(e){}
+  },8000);
+}
+
+async function loadDocs(){
+  try{
+    const r=await fetch('/api/docs');
+    if(r.status===401){ showLogin(null); return; }
+    const j=await r.json();
+    docList=j.items||[];
+  }catch(e){ docList=[]; }
+  renderDocs();
+}
+
+function renderDocs(){
+  const g=$('docGrid'); if(!g) return;
+  if($('docCount')) $('docCount').textContent=`${docList.length} 份文档`;
+  $('docEmpty').style.display=docList.length?'none':'block';
+  g.innerHTML=docList.map(d=>`<div class="dcard" onclick="openDoc('${d.id}')">
+      <div class="dt">
+        <div class="dic">${docIcon(d.ext)}</div>
+        <div class="dn" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</div>
+      </div>
+      <div class="dmeta">
+        <span>${escapeHtml((d.ext||'').replace('.',''))||'文件'}</span>
+        <span>${d.rows?d.rows+' 行':'未解析'}</span>
+        <span>${docSize(d.size)}</span>
+        <span>${fmtTime(d.created)}</span>
+      </div>
+      <div class="dprev">${escapeHtml(d.error? ('⚠ '+d.error) : ((d.sheets||[]).map(s=>s.name+' '+s.rows+' 行').join(' · ')||'点开查看正文'))}</div>
+      <div class="dacts">
+        <button class="btn" onclick="event.stopPropagation();openDoc('${d.id}')">打开</button>
+        <button class="btn" onclick="event.stopPropagation();docDownload('${d.id}')">下载</button>
+        <button class="btn" onclick="event.stopPropagation();docDel('${d.id}')">删除</button>
+      </div>
+    </div>`).join('');
+}
+
+async function uploadDocs(files){
+  const list=[...files]; if(!list.length) return;
+  if(!$('docDrop')) return;
+  toast('正在解析 '+list.length+' 份文档…');
+  let ok=0;
+  for(const f of list){
+    try{
+      const r=await fetch('/api/doc/upload?name='+encodeURIComponent(f.name),
+        {method:'POST',body:f,headers:{'Content-Type':'application/octet-stream'}});
+      const j=await r.json();
+      if(j.error) throw new Error(j.error);
+      ok++;
+      toast(`${f.name}：解析 ${j.item.rows||0} 行`);
+    }catch(e){ toast(`${f.name} 上传失败：${e.message}`,true); }
+  }
+  if(ok) await loadDocs();
+}
+
+async function docDel(id){
+  const d=docList.find(x=>x.id===id);
+  if(!d) return;
+  if(!confirm(`删除「${d.name}」？`)) return;
+  try{
+    await fetch('/api/doc/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id})});
+    toast('已删除');
+    if(docCur&&docCur.id===id) closeDoc();
+    await loadDocs();
+  }catch(e){ toast('删除失败：'+e.message,true); }
+}
+
+async function openDoc(id){
+  try{
+    const r=await fetch('/api/doc?id='+encodeURIComponent(id));
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    docCur=await r.json();
+  }catch(e){ return toast('打开失败：'+e.message,true); }
+  docSheetIdx=0; docQuery='';
+  $('docTitle').textContent=docCur.name;
+  $('docMeta').textContent=(docCur.sheets||[]).map(s=>s.name+' '+s.rows.length+' 行').join(' · ');
+  $('docModal').classList.add('show');
+  renderDocBody();
+}
+function closeDoc(){ $('docModal').classList.remove('show'); docCur=null; }
+
+function docRows(){
+  const sh=(docCur&&docCur.sheets&&docCur.sheets[docSheetIdx])||{rows:[]};
+  if(!docQuery) return sh.rows;
+  const kw=docQuery.toLowerCase();
+  return sh.rows.filter(r=>r.join(' ').toLowerCase().includes(kw));
+}
+function rowPrompt(r){
+  // 一行里最长的那格通常就是提示词/正文
+  let best='';
+  for(const c of r) if((c||'').length>(best||'').length) best=c;
+  return best||'';
+}
+function renderDocBody(){
+  const b=$('docBody'); if(!b||!docCur) return;
+  const sheets=docCur.sheets||[];
+  const tabs=sheets.length>1?`<div class="doc-tabs">${sheets.map((s,i)=>
+      `<button class="chip ${i===docSheetIdx?'on':''}" onclick="docSheetIdx=${i};docQuery='';renderDocBody()">${escapeHtml(s.name)} (${s.rows.length})</button>`).join('')}</div>`:'';
+  const rows=docRows();
+  docRowsView=rows;
+  const list=rows.slice(0,300).map((r,idx)=>{
+    const cells=r.map(c=>escapeHtml(c||'')).join(' <span style="color:#3c3c46">｜</span> ');
+    return `<div class="doc-row" id="drow${idx}">
+      <div class="rtxt">${cells||'<span style="color:#4c4c56">（空行）</span>'}</div>
+      <div class="racts">
+        <button class="btn" onclick="docUseAt(${idx})">填入</button>
+        <button class="btn" onclick="docCopyAt(${idx})">复制</button>
+        <button class="btn" onclick="document.getElementById('drow${idx}').classList.toggle('open')">展开</button>
+      </div>
+    </div>`;
+  }).join('');
+  b.innerHTML = tabs
+    + `<div class="doc-search"><input id="docFind" placeholder="在 ${rows.length} 行里搜关键词…" value="${escapeHtml(docQuery)}"><span style="font-size:11px;color:var(--dim)">最多显示 300 行</span></div>`
+    + (list || `<div class="empty" style="display:block"><b>没有匹配的行</b>换个关键词试试</div>`);
+  const inp=$('docFind');
+  if(inp){
+    inp.addEventListener('input',e=>{
+      docQuery=e.target.value.trim();
+      renderDocBody();
+      const again=$('docFind'); if(again){ again.focus(); again.setSelectionRange(again.value.length,again.value.length); }
+    });
+  }
+}
+function docUseAt(idx){
+  const r=docRowsView[idx]; if(!r) return;
+  const text=rowPrompt(r);
+  if(!text) return toast('这一行没有可用的文字',true);
+  $('homePrompt').value=text;
+  closeDoc();
+  $('docsView').classList.remove('show');
+  openHome();
+  $('homePrompt').focus();
+  toast('已填进对话框，改完直接生成');
+}
+function docCopyAt(idx){
+  const r=docRowsView[idx]; if(!r) return;
+  docCopyOf(rowPrompt(r));
+}
+function docCopyOf(text){
+  if(!text) return;
+  if(navigator.clipboard) navigator.clipboard.writeText(text).then(()=>toast('已复制'),()=>toast('复制失败',true));
+  else toast('当前浏览器不支持自动复制',true);
+}
+function docDownload(id){
+  if(!id && docCur) id=docCur.id;
+  if(!id) return;
+  const a=document.createElement('a');
+  a.href=withToken(apiUrl('/api/doc/raw?id='+encodeURIComponent(id)));
+  a.click();
 }
 
 /* ---------- 视图切换缓动 + 光标动效 ---------- */
@@ -1392,6 +1684,7 @@ function comfyBase(){ return (STATE && STATE.server) ? STATE.server.replace(/\/$
 function comfyProxy(p){ return (CW_API||'')+p; }
 function showFlow(){
   setSplit(false);
+  $('docsView').classList.remove('show');
   $('genView').classList.remove('show');
   if(genTimer){ clearInterval(genTimer); genTimer=null; }
   $('homeView').classList.remove('show');
@@ -1413,6 +1706,7 @@ function openFlowTab(){
 }
 function openHome(){
   if(typeof setSplit==='function') setSplit(false);
+  $('docsView').classList.remove('show');
   $('flowView') && $('flowView').classList.remove('show');
   $('genView').classList.remove('show');
   if(genTimer){clearInterval(genTimer);genTimer=null;}
@@ -1426,6 +1720,7 @@ function openHome(){
 }
 function showLibrary(){
   if(typeof setSplit==='function') setSplit(false);
+  $('docsView').classList.remove('show');
   $('flowView') && $('flowView').classList.remove('show');
   $('genView').classList.remove('show');
   if(genTimer){clearInterval(genTimer);genTimer=null;}
@@ -1695,7 +1990,7 @@ function genItemHtml(it){
     <div class="gi-meta">
       <span class="st ${st==='error'?'err':(st==='done'?'done':'')}">${stTxt}</span>
       <span class="tm">${fmtTime(it.created||0)}</span>
-      <span>${escapeHtml((it.workflow||'').replace('.json',''))}${mp?' · '+mp:''}${it.aspect?' · '+ratioShort(it.aspect):''}</span>
+      <span>${escapeHtml((it.workflow||'').replace('.json',''))}${mp?' · '+mp:''}${it.aspect?' · '+ratioShort(it.aspect):''}${it.origin?' · '+escapeHtml(it.origin):''}</span>
     </div>
     <div class="gi-bar"><i></i></div>
   </div>`;
@@ -1732,6 +2027,7 @@ function syncGenUI(){
 
 function openGenView(pid){
   if(pid) genPid=pid;
+  $('docsView').classList.remove('show');
   $('genView').classList.add('show');
   $('flowView') && $('flowView').classList.remove('show');
   $('homeView').classList.remove('show');
@@ -1999,13 +2295,14 @@ function downloadImage(){
   if(!current||!(current.files||[])[0]) return;
   const a=document.createElement('a'); a.href=imgUrl(current.files[0]); a.download=current.files[0].filename; a.click();
 }
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeViewer();closeDrawer();} });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeViewer();closeDrawer();closeDoc();} });
 
 /* ---------- 局域网共享 ---------- */
 let shareData=null, shareTimer=null, shareTabCur='files';
 
 function openShare(){
   if(typeof setSplit==='function') setSplit(false);
+  $('docsView').classList.remove('show');
   $('flowView') && $('flowView').classList.remove('show');
   $('genView').classList.remove('show');
   if(genTimer){clearInterval(genTimer);genTimer=null;}

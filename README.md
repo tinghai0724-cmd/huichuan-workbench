@@ -38,6 +38,8 @@ netsh advfirewall firewall add rule name="Comfy Workbench 8787" dir=in action=al
 
 只给本机用时加 `--host 127.0.0.1`。
 
+前端默认跟着「打开页面的那个地址」走：用 `http://192.168.x.x:8787` 打开就是同源，不会再去连 `127.0.0.1`；如果页面是从别的端口（比如临时起的静态服务）打开的，会自动推到同一台主机的 `8787`。所以别的电脑不要用 GitHub Pages 的 https 地址登录——https 页面连不上 http 后端，浏览器会直接拦掉，只会在登录页显示「连不上」。
+
 ## 配置
 
 所有敏感信息都只在 `comfy_web/config.local.json`（已 gitignore），字段：

@@ -915,7 +915,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script>window.CW_DEFAULT_API = "http://127.0.0.1:8787";</script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -929,6 +928,19 @@ const CW_API=(function(){
     if(q){ v=q.trim(); localStorage.setItem('cw_api', v); }
     else { v=(localStorage.getItem('cw_api')||'').trim(); }
     if(!v) v=(window.CW_DEFAULT_API||'').trim();
+    if(!v){
+      // 没显式配置：页面由本机 server.py 提供（端口 8787）→ 走同源；
+      // 由别的静态服务/端口提供 → 指向同一台主机的 8787
+      const host=location.hostname;
+      if(location.protocol==='http:' && host && host!=='127.0.0.1' && host!=='localhost' && location.port!=='8787'){
+        v='http://'+host+':8787';
+      }
+    }
+    // 别的电脑上用 127.0.0.1 只会打到它自己 → 自动换成本页所在主机
+    if(v && location.protocol==='http:' && (location.hostname||'')!=='127.0.0.1' && (location.hostname||'')!=='localhost'){
+      const u=new URL(v);
+      if(u.hostname==='127.0.0.1' || u.hostname==='localhost'){ u.hostname=location.hostname; v=u.toString(); }
+    }
   }catch(e){}
   return v.replace(/\/+$/,'');
 })();
@@ -1007,7 +1019,7 @@ let lgPoll=null;
 function paintProbe(st){
   const p=(st&&st.probe)||{};
   const dot=$('lgDot'), ms=$('lgMs');
-  $('lgServer').textContent = (st&&st.server)||'后端未配置';
+  $('lgServer').textContent = (st&&st.server) || ('连不上 ' + (CW_API || location.origin));
   if(p.online){
     dot.className='pdot ok'; ms.textContent = (p.ms||0)+' ms';
   }else{
@@ -1029,6 +1041,9 @@ function showLogin(st){
   const logo=$('loginLogo');
   if(logo&&!logo.src){ const s=document.querySelector('.logo img'); if(s) logo.src=s.src; }
   paintProbe(st);
+  if(location.protocol==='https:' && !CW_API && $('lgErr')){
+    $('lgErr').textContent='当前是 https 页面，浏览器禁止它直连 http 后端。请直接用 http://<后端电脑IP>:8787 打开工作台。';
+  }
   clearInterval(lgPoll);
   lgPoll=setInterval(async()=>{
     const s=await fetchLoginStatus();

@@ -335,6 +335,7 @@
     .wf-chip{max-width:none}
   }
   .wf-chip.dis{opacity:.32;cursor:not-allowed}
+  .wf-chip.needimg{border-color:rgba(224,138,24,.38)}
   .qbox{width:min(780px,100%);background:#0b0b0c;border:1px solid #26262a;border-radius:18px;padding:16px 18px 14px;transition:.18s}
   .qbox:focus-within{border-color:rgba(79,131,224,.65);box-shadow:0 0 0 3px rgba(2,58,145,.28)}
   .qbox textarea{width:100%;background:none;border:none;outline:none;resize:none;min-height:100px;font-size:13.5px;line-height:1.8;color:#f4f4f5;font-family:inherit}
@@ -349,6 +350,30 @@
   .qpill select{background:none;border:none;outline:none;color:inherit;font-size:12.5px;font-family:inherit;cursor:pointer;max-width:210px;text-overflow:ellipsis}
   .qpill select option{background:#0a1424;color:#dfe7f7}
   .qbar .grow{flex:1}
+
+  /* 参考图缩略图区：序号 + 删除 */
+  .ref-strip{display:none;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+  .ref-strip.on{display:flex}
+  .ref-item{position:relative;width:56px;height:56px;border-radius:10px;overflow:hidden;border:1px solid #2a2a2f;background:#0f0f11;flex:0 0 auto}
+  .ref-item img{width:100%;height:100%;object-fit:cover;display:block}
+  .ref-item .idx{position:absolute;left:4px;top:4px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:rgba(2,58,145,.85);color:#dfe9ff;font-size:10px;line-height:16px;text-align:center}
+  .ref-item .del{position:absolute;right:4px;top:4px;width:17px;height:17px;border-radius:50%;background:rgba(0,0,0,.72);border:1px solid #3a3a40;color:#d0d0d8;font-size:11px;line-height:15px;text-align:center;cursor:pointer;padding:0;font-family:inherit}
+  .ref-item .del:hover{background:#8a1f1f;color:#fff;border-color:#c04a4a}
+  .ref-add{width:56px;height:56px;border-radius:10px;border:1px dashed #333338;background:#0f0f11;color:#8a8a93;font-size:20px;cursor:pointer;flex:0 0 auto;font-family:inherit}
+  .ref-add:hover{border-color:rgba(79,131,224,.6);color:#cfdcff}
+
+  /* 必须先给参考图时的高亮 */
+  .qpill.need{border-color:rgba(224,138,24,.75);color:#ffd7a1;background:rgba(120,68,10,.28);animation:needPulse 1.8s ease-in-out infinite}
+  @keyframes needPulse{0%,100%{box-shadow:0 0 0 0 rgba(224,138,24,.0)}50%{box-shadow:0 0 0 3px rgba(224,138,24,.22)}}
+  .qpill.off{opacity:.45;cursor:not-allowed}
+
+  /* 像素滑块 */
+  .qslide{display:flex;align-items:center;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid #1d1d21}
+  .qslide .qs-ic{font-size:13px;color:#8a8a93}
+  .qslide input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:linear-gradient(90deg,#023a91,#4f83e0);outline:none;cursor:pointer}
+  .qslide input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:#dfe9ff;border:2px solid #2a6bd6;cursor:pointer}
+  .qslide input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:#dfe9ff;border:2px solid #2a6bd6;cursor:pointer}
+  .qslide .qs-val{font-size:12px;color:#cfdcff;min-width:54px;text-align:right;font-variant-numeric:tabular-nums}
   .qgen{height:38px;padding:0 22px;border-radius:11px;background:linear-gradient(135deg,#023a91,#1f5cc0);color:#fff;font-weight:700;font-size:13.5px;border:none;cursor:pointer;font-family:inherit;white-space:nowrap;transition:.15s}
   .qgen:hover{filter:brightness(1.12)}
   .qgen:disabled{opacity:.5;cursor:not-allowed;filter:none}
@@ -658,9 +683,10 @@
       <div class="wf-chips" id="homeWfChips"></div>
 
       <div class="qbox">
+        <div class="ref-strip" id="homeRefStrip"></div>
         <textarea id="homePrompt" placeholder="描述你想生成的画面，例如：蓝紫色赛博风夜景，霓虹灯，超广角构图"></textarea>
         <div class="qbar">
-          <button class="qpill qref" id="homeRefPill" onclick="homePickRef()" title="加入参考图">
+          <button class="qpill qref" id="homeRefPill" onclick="homePickRef()" title="加入参考图（最多 5 张）">
             <span class="ic" id="homeRefIc">🖼</span>
             <span id="homeRefText">参考图</span>
           </button>
@@ -668,16 +694,20 @@
             <span class="ic">✦</span>
             <select id="homeWf" onchange="setWfFrom(this.value)"></select>
           </div>
-          <button class="qpill" id="homeMpPill" onclick="cycleMp()" title="生成像素大小">
-            <span class="ic">◲</span><span id="homeMpText">2.0 MP</span>
-          </button>
-          <button class="qpill" id="homeRatioPill" onclick="cycleRatio()" title="生成尺寸比例">
-            <span class="ic">▭</span><span id="homeRatioText">16:9</span>
-          </button>
+          <div class="qpill" title="生成尺寸比例">
+            <span class="ic">▭</span>
+            <select id="homeRatio" onchange="setRatioFrom(this.value)"></select>
+          </div>
           <div class="grow"></div>
           <button class="qgen" id="homeGen" onclick="homeGenerate()">✦ 生成</button>
         </div>
+        <div class="qslide">
+          <span class="qs-ic">◲</span>
+          <input type="range" id="homeMp" min="0" max="5" step="1" value="2" oninput="onHomeMp(this.value)" title="生成像素大小">
+          <span class="qs-val" id="homeMpText">2.0 MP</span>
+        </div>
       </div>
+      <input type="file" id="homeFileInput" accept="image/*" multiple style="display:none">
       <div class="home-tip" id="homeTip">按 Enter 直接提交 · Shift+Enter 换行</div>
     </div>
 
@@ -709,9 +739,10 @@
 
     <div class="gen-compose">
       <div class="gc-box">
+        <div class="ref-strip" id="gcRefStrip"></div>
         <textarea id="gcPrompt" placeholder="继续描述你想生成的画面，Enter 直接生成"></textarea>
         <div class="qbar">
-          <button class="qpill qref" id="gcRefPill" onclick="homePickRef()" title="加入参考图">
+          <button class="qpill qref" id="gcRefPill" onclick="homePickRef()" title="加入参考图（最多 5 张）">
             <span class="ic" id="gcRefIc">🖼</span>
             <span id="gcRefText">参考图</span>
           </button>
@@ -719,14 +750,17 @@
             <span class="ic">✦</span>
             <select id="gcWf" onchange="setWfFrom(this.value)"></select>
           </div>
-          <button class="qpill" id="gcMpPill" onclick="cycleMp()" title="生成像素大小">
-            <span class="ic">◲</span><span id="gcMpText">2.0 MP</span>
-          </button>
-          <button class="qpill" id="gcRatioPill" onclick="cycleRatio()" title="生成尺寸比例">
-            <span class="ic">▭</span><span id="gcRatioText">16:9</span>
-          </button>
+          <div class="qpill" title="生成尺寸比例">
+            <span class="ic">▭</span>
+            <select id="gcRatio" onchange="setRatioFrom(this.value)"></select>
+          </div>
           <div class="grow"></div>
           <button class="qgen" id="gcGen" onclick="genGenerate()">✦ 生成</button>
+        </div>
+        <div class="qslide">
+          <span class="qs-ic">◲</span>
+          <input type="range" id="gcMp" min="0" max="5" step="1" value="2" oninput="onHomeMp(this.value)" title="生成像素大小">
+          <span class="qs-val" id="gcMpText">2.0 MP</span>
         </div>
       </div>
     </div>
@@ -838,7 +872,7 @@
 
     <div class="field" id="mpField">
       <label>画质像素：<span id="mpLabel" style="color:var(--text)">2.0 MP</span></label>
-      <input type="range" class="range" id="mp" min="1" max="8" step="0.5" value="2" oninput="syncMpLabel()">
+      <input type="range" class="range" id="mp" min="1" max="4" step="0.5" value="2" oninput="syncMpLabel()">
       <div class="tip">模型按 2048×2048 面积调优；16G 显存建议 2–4 MP。</div>
     </div>
 
@@ -881,6 +915,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script>window.CW_DEFAULT_API = "http://127.0.0.1:8787";</script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -926,18 +961,35 @@ const RATIOS = [
   ['16:9 (Widescreen)','16:9'],['3:4 (Portrait Standard)','3:4'],
   ['2:3 (Portrait Photo)','2:3'],['9:16 (Portrait Widescreen)','9:16']
 ];
+const MP_STEPS=[1,1.5,2,2.5,3,4];
 let STATE={items:[],jobs:{},workflows:[],default_workflow:''};
-let filter='all', ratioFilter='all', mode='single', current=null, pollTimer=null, refImage=null;
+let filter='all', ratioFilter='all', mode='single', current=null, pollTimer=null;
+// 参考图：最多 5 张，refImages 存 ComfyUI input 里的文件名，refUrls 存本地预览用的 objectURL
+const REF_MAX = 5;
+let refImages = [];
+let refUrls = [];
 let curRatio='16:9 (Widescreen)';
 let WF_NAME='';
 
-// 比例按钮
+// 比例按钮（抽屉里的 chip 行）
 RATIOS.forEach(([val,label])=>{
   const b=document.createElement('button');
   b.className='chip'+(val===curRatio?' on':''); b.textContent=label; b.dataset.v=val;
-  b.onclick=()=>{curRatio=val;[...ratioRow.children].forEach(c=>c.classList.toggle('on',c.dataset.v===val));updateQuickEst();};
+  b.onclick=()=>setRatioFrom(val);
   ratioRow.appendChild(b);
 });
+
+// 比例下拉（首页 / 生成页）
+function fillRatioSelects(){
+  ['homeRatio','gcRatio'].forEach(id=>{
+    const el=$(id); if(!el) return;
+    if(!el.options.length){
+      el.innerHTML = RATIOS.map(([val,label])=>`<option value="${val}">${label}</option>`).join('');
+    }
+    el.value = curRatio;
+  });
+}
+fillRatioSelects();
 
 function toast(msg,isErr){const t=$('toast');t.textContent=msg;t.classList.toggle('err',!!isErr);t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2800)}
 const ratioShort=v=>(v||'').split(' ')[0];
@@ -1258,9 +1310,10 @@ function updateQuickEst(){
   const r=(typeof curRatio==='string'&&curRatio)?curRatio.split(' ')[0]:'自动';
   const mpTxt=`${(+mp).toFixed(1)} MP`;
   if($('homeMpText')) $('homeMpText').textContent = mpTxt;
-  if($('homeRatioText')) $('homeRatioText').textContent = r;
   if($('gcMpText')) $('gcMpText').textContent = mpTxt;
-  if($('gcRatioText')) $('gcRatioText').textContent = r;
+  // 滑块档位跟抽屉里的 #mp 对齐
+  const idx=MP_STEPS.indexOf(+mp);
+  ['homeMp','gcMp'].forEach(id=>{ const el=$(id); if(el && idx>=0 && +el.value!==idx) el.value=idx; });
 }
 function quickGen(){
   const t=(($('homePrompt')&&$('homePrompt').value)||'').trim();
@@ -1426,9 +1479,13 @@ function renderHome(){
   const chips=$('homeWfChips');
   if(chips && wfs.length && chips.dataset.sig!==wfs.map(w=>w.name+(w.ok?'1':'0')).join('|')){
     chips.dataset.sig=wfs.map(w=>w.name+(w.ok?'1':'0')).join('|');
-    chips.innerHTML = wfs.map(w=>`<button class="wf-chip ${w.name===WF_NAME?'on':''}${w.ok?'':' dis'}"
-      data-n="${escapeHtml(w.name)}" title="${escapeHtml(w.label||w.name)}"
-      ${w.ok?`onclick="setWfFrom(this.dataset.n)"`:'disabled'}>${escapeHtml((w.label||w.name).replace('.json','').replace(/^[【▶▷\s]+/,''))}</button>`).join('');
+    chips.innerHTML = wfs.map(w=>{
+      const need = w.can_image && w.has_prompt===false;   // 必须给参考图的流程
+      const label = (w.label||w.name).replace('.json','').replace(/^[【▶▷\s]+/,'');
+      return `<button class="wf-chip ${w.name===WF_NAME?'on':''}${w.ok?'':' dis'}${need?' needimg':''}"
+      data-n="${escapeHtml(w.name)}" title="${escapeHtml((w.label||w.name)+(need?'（必须给参考图）':''))}"
+      ${w.ok?`onclick="setWfFrom(this.dataset.n)"`:'disabled'}>${escapeHtml(label)}${need?' ·需图':''}</button>`;
+    }).join('');
   }
   syncHomeWfUI();
 
@@ -1451,58 +1508,129 @@ function syncHomeWfUI(){
   if(typeof syncGenUI==='function') syncGenUI();
 }
 
-const MP_STEPS=[1,1.5,2,2.5,3,4];
-function cycleMp(){
+/* 像素滑块：0..5 的档位映射到 MP_STEPS，滑块和抽屉里的 #mp 保持同步 */function syncMpEverywhere(){
+  const mpVal = +($('mp').value||2);
+  let idx = MP_STEPS.indexOf(mpVal);
+  if(idx<0){                              // 抽屉能拖到非档位值，滑块显示最近的档
+    idx = MP_STEPS.reduce((best,v,i)=>Math.abs(v-mpVal)<Math.abs(MP_STEPS[best]-mpVal)?i:best,0);
+  }
+  ['homeMp','gcMp'].forEach(id=>{ const el=$(id); if(el && +el.value!==idx) el.value=idx; });
+  ['homeMpText','gcMpText'].forEach(id=>{ const el=$(id); if(el) el.textContent=mpVal.toFixed(1)+' MP'; });
+  if($('mpLabel')) $('mpLabel').textContent=mpVal.toFixed(1)+' MP';
+  updateQuickEst();
+}
+function onHomeMp(idx){
+  const v = MP_STEPS[+idx] ?? 2;
+  $('mp').value = v;
+  ['homeMp','gcMp'].forEach(id=>{ const el=$(id); if(el) el.value=+idx; });
+  syncMpEverywhere();
+}
+function cycleMp(){                       // 仍保留给旧入口调用
   const cur=+($('mp').value||2);
   const next=MP_STEPS[(MP_STEPS.indexOf(cur)+1)%MP_STEPS.length] ?? MP_STEPS[1];
-  $('mp').value=next; syncMpLabel(); updateQuickEst();
+  $('mp').value=next; syncMpEverywhere();
   toast(`像素 ${next.toFixed(1)} MP`);
+}
+function setRatioFrom(v){
+  if(!v) return;
+  curRatio=v;
+  [...ratioRow.children].forEach(c=>c.classList.toggle('on', c.dataset.v===v));
+  ['homeRatio','gcRatio'].forEach(id=>{ const el=$(id); if(el && el.value!==v) el.value=v; });
+  updateQuickEst();
 }
 function cycleRatio(){
   const idx=RATIOS.findIndex(r=>r[0]===curRatio);
-  const next=RATIOS[(idx+1)%RATIOS.length][0];
-  curRatio=next;
-  [...ratioRow.children].forEach(c=>c.classList.toggle('on', c.dataset.v===next));
-  updateQuickEst();
-  toast('画幅 '+ratioShort(next));
+  setRatioFrom(RATIOS[(idx+1)%RATIOS.length][0]);
+  toast('画幅 '+ratioShort(curRatio));
 }
 function homePickRef(){
   const c=capsOf(WF_NAME);
-  if(c.size_mode==='none'||!c.can_image){
-    // 依然允许选，但不支持参考图时提示
+  if(!c.can_image) return toast('当前工作流没有图片输入，换个带参考图的流程',true);
+  $('homeFileInput').click();
+}
+
+/* ---------- 参考图（多张） ---------- */
+function refPillState(){
+  const c=capsOf(WF_NAME);
+  const need = needsImage(WF_NAME) && refImages.length===0;
+  ['homeRefPill','gcRefPill'].forEach(id=>{
+    const p=$(id); if(!p) return;
+    p.classList.toggle('need', need);
+    p.classList.toggle('on', refImages.length>0);
+    p.classList.toggle('off', !c.can_image);
+    p.title = !c.can_image ? '该工作流没有图片输入'
+      : (need ? '这个工作流必须给参考图' : `参考图 ${refImages.length}/${REF_MAX}`);
+  });
+  ['homeRefText','gcRefText'].forEach(id=>{
+    const el=$(id); if(!el) return;
+    el.textContent = refImages.length ? `参考图 ${refImages.length}/${REF_MAX}` : (needsImage(WF_NAME) ? '需要参考图' : '参考图');
+  });
+  ['homeRefIc','gcRefIc'].forEach(id=>{ const el=$(id); if(el) el.textContent='🖼'; });
+}
+function renderRefStrip(){
+  const html = refImages.map((name,i)=>`<div class="ref-item" title="${escapeHtml(name)}">
+      <img src="${refUrls[i]||''}" alt="">
+      <span class="idx">${i+1}</span>
+      <button class="del" onclick="removeRef(${i})" title="移除">×</button>
+    </div>`).join('') +
+    (refImages.length<REF_MAX
+      ? `<button class="ref-add" onclick="homePickRef()" title="再加一张">+</button>`
+      : '');
+  ['homeRefStrip','gcRefStrip'].forEach(id=>{
+    const box=$(id); if(!box) return;
+    box.innerHTML=html;
+    box.classList.toggle('on', refImages.length>0);
+  });
+}
+function updateHomeRef(){ refPillState(); renderRefStrip(); }
+function removeRef(i){
+  const url=refUrls[i];
+  if(url && url.startsWith('blob:')) { try{ URL.revokeObjectURL(url); }catch(e){} }
+  refImages.splice(i,1); refUrls.splice(i,1);
+  updateHomeRef();
+  toast('已移除这张参考图');
+}
+function clearRefs(){
+  refUrls.forEach(u=>{ if(u&&u.startsWith('blob:')){ try{ URL.revokeObjectURL(u); }catch(e){} } });
+  refImages=[]; refUrls=[]; updateHomeRef();
+}
+
+/* 批量上传参考图（最多 5 张），逐张写进 ComfyUI input */
+async function addRefFiles(files){
+  const c=capsOf(WF_NAME);
+  if(!c.can_image) return toast('当前工作流没有图片输入',true);
+  const list=[...files].filter(f=>f.type.startsWith('image/'));
+  if(!list.length) return;
+  const room=REF_MAX-refImages.length;
+  if(room<=0) return toast(`最多 ${REF_MAX} 张参考图`,true);
+  const use=list.slice(0,room);
+  if(list.length>room) toast(`最多 ${REF_MAX} 张，多余的已忽略`,true);
+  for(const f of use){
+    try{
+      const fd=new FormData(); fd.append('image',f); fd.append('type','input'); fd.append('overwrite','true');
+      const j=await (await fetch('/api/upload',{method:'POST',body:fd})).json();
+      if(j.error) throw new Error(j.error);
+      refImages.push(j.name);
+      refUrls.push(URL.createObjectURL(f));
+      updateHomeRef();
+    }catch(err){ toast('上传失败：'+err.message,true); }
   }
-  if(!c.can_image && c.ok!==false) return toast('当前工作流没有图片输入，参考图不会生效',true);
-  $('fileInput').click();
+  if(refImages.length) toast(`已添加 ${refImages.length} 张参考图`);
 }
-function updateRefPill(pillId, txtId, icId){
-  const pill=$(pillId), txt=$(txtId), ic=$(icId);
-  if(!pill||!txt||!ic) return;
-  if(refImage){
-    pill.classList.add('on');
-    txt.textContent = refImage.length>16 ? refImage.slice(0,14)+'…' : refImage;
-    ic.textContent='';
-    let im=pill.querySelector('img');
-    if(!im){ im=document.createElement('img'); pill.insertBefore(im, txt); }
-    if(dropImg.src) im.src=dropImg.src;
-  }else{
-    pill.classList.remove('on');
-    const im=pill.querySelector('img'); if(im) im.remove();
-    ic.textContent='🖼'; txt.textContent='参考图';
-  }
-}
-function updateHomeRef(){
-  updateRefPill('homeRefPill','homeRefText','homeRefIc');
-  updateRefPill('gcRefPill','gcRefText','gcRefIc');
-}
+$('homeFileInput').addEventListener('change', async e=>{
+  await addRefFiles(e.target.files);
+  e.target.value='';
+});
+
 async function homeGenerate(){
   const t=(($('homePrompt')&&$('homePrompt').value)||'').trim();
   if(!t) return toast('先描述你想生成的画面',true);
-  if(needsImage(WF_NAME) && !refImage) return toast('「'+((capsOf(WF_NAME).label)||WF_NAME)+'」需要先添加参考图',true);
+  if(needsImage(WF_NAME) && !refImages.length){ refPillState(); return toast('「'+((capsOf(WF_NAME).label)||WF_NAME)+'」必须给参考图，点「参考图」加上',true); }
   const btn=$('homeGen'); if(btn.disabled) return;
   btn.disabled=true; const old=btn.textContent; btn.textContent='提交中…';
   const payload={...payloadBase(), prompt:t};
   // 一开始生成，首页立即切换为生成过程页
-  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:+$('mp').value, image:refImage};
+  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:+$('mp').value, image:refImages[0]||null, images:refImages.slice()};
   genPid=null;
   $('homePrompt').value='';
   openGenView();
@@ -1581,9 +1709,9 @@ function renderThread(fresh){
 function syncGenUI(){
   const sel=$('gcWf');
   if(sel && [...sel.options].some(o=>o.value===WF_NAME) && sel.value!==WF_NAME) sel.value=WF_NAME;
-  if($('gcMpText')) $('gcMpText').textContent=(+($('mp')&&$('mp').value||2)).toFixed(1)+' MP';
-  if($('gcRatioText')) $('gcRatioText').textContent=ratioShort(curRatio);
-  updateRefPill('gcRefPill','gcRefText','gcRefIc');
+  if($('gcRatio')) { if($('gcRatio').value!==curRatio) $('gcRatio').value=curRatio; }
+  syncMpEverywhere();
+  updateHomeRef();
 }
 
 function openGenView(pid){
@@ -1664,11 +1792,11 @@ async function pollCard(pid){
 async function genGenerate(){
   const t=(($('gcPrompt')&&$('gcPrompt').value)||'').trim();
   if(!t) return toast('先描述你想生成的画面',true);
-  if(needsImage(WF_NAME) && !refImage) return toast('「'+((capsOf(WF_NAME).label)||WF_NAME)+'」需要先添加参考图',true);
+  if(needsImage(WF_NAME) && !refImages.length){ refPillState(); return toast('「'+((capsOf(WF_NAME).label)||WF_NAME)+'」必须给参考图，点「参考图」加上',true); }
   const btn=$('gcGen'); if(btn.disabled) return;
   btn.disabled=true; const old=btn.textContent; btn.textContent='提交中…';
   const payload={...payloadBase(), prompt:t};
-  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:+$('mp').value, image:refImage};
+  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:+$('mp').value, image:refImages[0]||null, images:refImages.slice()};
   genPid=null;
   renderThread(true);
   try{
@@ -1754,7 +1882,7 @@ function closeDrawer(){
   $('mask').classList.remove('show'); $('drawer').classList.remove('show');
 }
 function setMode(){ mode='single'; $('drawerTitle').textContent='新建生成'; }
-function syncMpLabel(){ $('mpLabel').textContent=(+$('mp').value).toFixed(1)+' MP'; if(typeof updateQuickEst==='function') updateQuickEst(); }
+function syncMpLabel(){ syncMpEverywhere(); }
 
 function pickFile(){ if($('fileInput').disabled) return toast('当前工作流不支持参考图',true); $('fileInput').click(); }
 $('fileInput').onchange=async e=>{
@@ -1765,7 +1893,7 @@ $('fileInput').onchange=async e=>{
   try{
     const j=await (await fetch('/api/upload',{method:'POST',body:fd})).json();
     if(j.error) throw new Error(j.error);
-    refImage=j.name; dropHint.textContent='已上传到 ComfyUI input'; updateHomeRef();
+    if(!refImages.length){ refImages=[]; } refImages=[j.name]; refUrls=[dropImg.src]; dropHint.textContent='已上传到 ComfyUI input'; updateHomeRef();
   }catch(err){ dropHint.textContent='上传失败'; toast('上传失败：'+err.message,true); }
 };
 
@@ -1776,7 +1904,8 @@ function payloadBase(){
     aspect: c.size_mode!=='none' ? curRatio : null,
     megapixels: c.size_mode!=='none' ? +$('mp').value : null,
     seed: $('seed').value.trim() || null,
-    image: refImage,
+    image: refImages[0]||null,
+    images: refImages.slice(),
     lora: $('lora').value.trim() || null
   };
 }
@@ -2021,7 +2150,7 @@ async function importRef(id){
   const j=await (await fetch('/api/share/import',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({id})})).json();
   if(j.error) return toast('导入失败：'+j.error,true);
-  refImage=j.name;
+  refImages.push(j.name);
   dropImg.src=shareDl(id); dropImg.style.display='block'; dropPh.style.display='none';
   dropName.textContent=j.filename||'共享文件'; dropHint.textContent='来自共享 · 已在 ComfyUI input';
   toast('已设为参考图，打开生成面板就能用');

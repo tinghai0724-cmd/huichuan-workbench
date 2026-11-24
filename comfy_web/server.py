@@ -104,11 +104,18 @@ class Registry:
             if os.path.exists(path):
                 need = os.path.getsize(path) < 400      # 空/损坏才重下
             if need:
-                enc = urllib.parse.escape("workflows/" + name)
-                blob = self.client.get("/api/userdata/" + enc)
-                raw = blob if isinstance(blob, bytes) else json.dumps(blob, ensure_ascii=False).encode("utf-8")
-                with open(path, "wb") as f:
-                    f.write(raw)
+                try:
+                    # ComfyUI 的 userdata 接口要把整个相对路径（含 /）一起编码
+                    enc = urllib.parse.quote("workflows/" + name, safe="")
+                    blob = self.client.get("/api/userdata/" + enc)
+                    raw = (blob if isinstance(blob, bytes)
+                           else json.dumps(blob, ensure_ascii=False).encode("utf-8"))
+                    with open(path, "wb") as f:
+                        f.write(raw)
+                except Exception as e:             # noqa: BLE001
+                    # 单个工作流拉不下来不影响其它工作流
+                    self.errors[name] = f"{type(e).__name__}: {e}"
+                    print(f"! 工作流下载失败 {name}: {e}")
             self.files[name] = path
         self.names = sorted(self.files, key=lambda s: s)
         return self.names
@@ -282,7 +289,7 @@ def probe(p):
     return caps
 
 
-def apply_params(prompt, caps, *, text=None, image=None, aspect=None, megapixels=None,
+def apply_params(prompt, caps, *, text=None, image=None, images=None, aspect=None, megapixels=None,
                  width=None, height=None, seed=None, lora=None, prefix="comfy_ui"):
     """按能力把参数写进 API prompt"""
     touched = []
@@ -292,9 +299,12 @@ def apply_params(prompt, caps, *, text=None, image=None, aspect=None, megapixels
         prompt[nid]["inputs"][key] = text
         touched.append("prompt")
 
-    if image and caps.get("images"):
-        nid, key = caps["images"][0]
-        prompt[nid]["inputs"][key] = image
+    # 参考图：优先用 images 列表（最多填满工作流里所有 LoadImage 位），兼容旧的单图 image
+    names = [x for x in (images or []) if x] or ([image] if image else [])
+    slots = caps.get("images") or []
+    for (nid, key), name in zip(slots, names):
+        prompt[nid]["inputs"][key] = name
+    if names:
         touched.append("image")
 
     if caps.get("size_mode") == "resolution":
@@ -876,13 +886,16 @@ def reconcile_stale():
         print(f"· 已清理 {changed} 个中断任务")
 
 
-def submit_one(*, workflow, text, image, aspect, megapixels, width, height, seed, lora, prefix):
+def submit_one(*, workflow, text, image=None, images=None, aspect, megapixels, width, height,
+               seed, lora, prefix):
     caps = REG.caps_of(workflow)
     if not caps.get("ok"):
         raise ComfyError(400, f"工作流不可用：{caps.get('error')}")
     api = REG.base_prompt(workflow)
-    apply_params(api, caps, text=text, image=image, aspect=aspect, megapixels=megapixels,
-                 width=width, height=height, seed=seed, lora=lora, prefix=prefix)
+    names = [x for x in (images or []) if x] or ([image] if image else [])
+    apply_params(api, caps, text=text, image=image, images=names, aspect=aspect,
+                 megapixels=megapixels, width=width, height=height, seed=seed, lora=lora,
+                 prefix=prefix)
     res = CLIENT.submit(api)
     if res.get("node_errors"):
         raise ComfyError(200, json.dumps(res["node_errors"], ensure_ascii=False))
@@ -890,7 +903,7 @@ def submit_one(*, workflow, text, image, aspect, megapixels, width, height, seed
     item = {
         "id": pid, "prompt_id": pid, "workflow": workflow, "prompt": text,
         "aspect": aspect, "megapixels": megapixels, "width": width, "height": height,
-        "seed": seed, "image": image, "status": "queued",
+        "seed": seed, "image": (names or [None])[0], "images": names, "status": "queued",
         "created": time.time(), "files": [],
     }
     STORE.add(item)
@@ -1183,7 +1196,7 @@ class Handler(BaseHTTPRequestHandler):
                 pid = submit_one(
                     workflow=p.get("workflow") or DEFAULTS["default_workflow"],
                     text=(p.get("prompt") or "").strip(),
-                    image=p.get("image"), aspect=p.get("aspect"),
+                    image=p.get("image"), images=p.get("images"), aspect=p.get("aspect"),
                     megapixels=p.get("megapixels"), width=p.get("width"), height=p.get("height"),
                     seed=p.get("seed"), lora=p.get("lora"), prefix="comfy_ui")
                 return self._json({"prompt_id": pid})
@@ -1198,7 +1211,7 @@ class Handler(BaseHTTPRequestHandler):
                     try:
                         pid = submit_one(
                             workflow=p.get("workflow") or DEFAULTS["default_workflow"],
-                            text=text, image=p.get("image"), aspect=p.get("aspect"),
+                            text=text, image=p.get("image"), images=p.get("images"), aspect=p.get("aspect"),
                             megapixels=p.get("megapixels"), width=p.get("width"),
                             height=p.get("height"), seed=p.get("seed"),
                             lora=p.get("lora"), prefix="comfy_ui")

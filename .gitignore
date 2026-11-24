@@ -1,0 +1,23 @@
+# 本地凭据 / 运行数据，不进仓库
+comfy_web/data/
+comfy_web/config.local.json
+comfy_web/*.log
+comfy_web/data/*.log
+
+# 生成结果（体积大，按需自己保留）
+comfy_out/
+
+# ComfyUI 探测缓存的节点清单（每个环境不同，后端会实时拉取，不必入库）
+comfy_wf/object_info.json
+
+# Python
+__pycache__/
+*.pyc
+
+# 发布脚本用的 token 文件
+gh_token.txt
+.github_token
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db

@@ -1,0 +1,9 @@
+{
+  "server": "http://127.0.0.1:8188",
+  "user": "your-comfy-user",
+  "password": "your-comfy-password",
+  "share_server": "http://127.0.0.1:8080",
+  "port": 8787,
+  "default_workflow": "KOOK-Minimax-H3-image-尘星.json",
+  "cors": "*"
+}

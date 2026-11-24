@@ -1,0 +1,1341 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+ComfyUI 本地 Web UI 服务 v2
+------------------------------------------------
+新增：
+  · 多工作流切换 —— 自动同步 ComfyUI 工作流库，自动探测每个工作流的
+    提示词节点 / 参考图节点 / 尺寸节点 / 采样器，前端按能力启用对应控件
+  · 批量提交 —— 一次贴 N 条提示词，逐条入队
+
+启动：python server.py --port 8787 --open
+"""
+
+import argparse
+import base64
+import collections
+import copy
+import json
+import mimetypes
+import os
+import secrets
+import sys
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+sys.path.insert(0, ROOT)
+
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from comfy_gen import Comfy, ComfyError, convert_ui_to_api  # noqa: E402
+
+def _load_config():
+    """读取本机配置：config.local.json（不进仓库）> 环境变量 > 空。
+
+    仓库里不带任何真实凭据，部署到别处只改配置即可。
+    """
+    path = os.environ.get("CW_CONFIG") or os.path.join(HERE, "config.local.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:                        # noqa: BLE001
+        return {}
+
+
+_CFG = _load_config()
+
+DEFAULTS = {
+    "server": (os.environ.get("COMFY_SERVER") or _CFG.get("server")
+               or "http://127.0.0.1:8188"),
+    "user": os.environ.get("COMFY_USER") or _CFG.get("user") or "",
+    "password": os.environ.get("COMFY_PASS") or _CFG.get("password") or "",
+    "workflow_dir": (os.environ.get("COMFY_WF_DIR") or _CFG.get("workflow_dir")
+                     or os.path.join(ROOT, "comfy_wf")),
+    "port": int(os.environ.get("PORT") or _CFG.get("port") or 8787),
+    "default_workflow": _CFG.get("default_workflow") or "KOOK-Minimax-H3-image-尘星.json",
+    "cors": os.environ.get("CW_CORS") or _CFG.get("cors") or "",
+}
+
+DATA_DIR = os.path.join(HERE, "data")
+RECORDS = os.path.join(DATA_DIR, "records.json")
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(DEFAULTS["workflow_dir"], exist_ok=True)
+
+RATIOS = ["1:1 (Square)", "4:3 (Standard)", "3:2 (Photo)", "16:9 (Widescreen)",
+          "3:4 (Portrait Standard)", "2:3 (Portrait Photo)", "9:16 (Portrait Widescreen)"]
+
+SAMPLERS = {"KSampler", "KSamplerAdvanced", "SamplerCustom", "SamplerCustomAdvanced"}
+TEXT_KEYS = ("text", "value", "prompt", "string", "text_prompt", "positive_prompt")
+SIZE_FIRST = ("ResolutionSelector",)
+
+_lock = threading.Lock()
+
+
+# ============================ 工作流注册表 ============================
+class Registry:
+    """同步工作流库 + 转 API 格式 + 探测能力"""
+
+    def __init__(self, client):
+        self.client = client
+        self.oi = None
+        self.names = []
+        self.files = {}
+        self.base = {}          # name -> api prompt
+        self.caps = {}          # name -> caps dict
+        self.errors = {}        # name -> error text
+        self._lock = threading.Lock()
+
+    # ---------- 同步 ----------
+    def sync(self):
+        data = self.client.get("/api/userdata?dir=workflows")
+        rows = data if isinstance(data, list) else json.loads(data or "[]")
+        wdir = DEFAULTS["workflow_dir"]
+        for name in rows:
+            path = os.path.join(wdir, name)
+            need = True
+            if os.path.exists(path):
+                need = os.path.getsize(path) < 400      # 空/损坏才重下
+            if need:
+                enc = urllib.parse.escape("workflows/" + name)
+                blob = self.client.get("/api/userdata/" + enc)
+                raw = blob if isinstance(blob, bytes) else json.dumps(blob, ensure_ascii=False).encode("utf-8")
+                with open(path, "wb") as f:
+                    f.write(raw)
+            self.files[name] = path
+        self.names = sorted(self.files, key=lambda s: s)
+        return self.names
+
+    def ensure_oi(self):
+        if self.oi is None:
+            self.oi = self.client.object_info()
+
+    # ---------- 转换 ----------
+    def base_prompt(self, name):
+        with self._lock:
+            if name in self.base:
+                return copy.deepcopy(self.base[name])
+        path = self.files.get(name)
+        if not path:
+            raise KeyError(f"未知工作流 {name}")
+        self.ensure_oi()
+        with open(path, "r", encoding="utf-8-sig") as f:
+            wf = json.load(f)
+        api = convert_ui_to_api(wf, self.oi) if "nodes" in wf else {
+            k: v for k, v in wf.items() if isinstance(v, dict) and "class_type" in v
+        }
+        with self._lock:
+            self.base[name] = api
+        return copy.deepcopy(api)
+
+    # ---------- 能力探测 ----------
+    def caps_of(self, name):
+        with self._lock:
+            if name in self.caps:
+                return self.caps[name]
+            if name in self.errors:
+                return {"ok": False, "error": self.errors[name]}
+        try:
+            api = self.base_prompt(name)
+            caps = probe(api)
+            caps["ok"] = True
+        except Exception as e:                       # noqa: BLE001
+            caps = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+            with self._lock:
+                self.errors[name] = caps["error"]
+            return caps
+        with self._lock:
+            self.caps[name] = caps
+        return caps
+
+    def warm(self):
+        """后台预热：把所有工作流都转一遍、探一遍"""
+        def run():
+            for n in self.names:
+                try:
+                    self.caps_of(n)
+                except Exception:                    # noqa: BLE001
+                    pass
+            print(f"· 工作流预热完成（{len(self.caps)} 可用 / {len(self.errors)} 异常）")
+        threading.Thread(target=run, daemon=True).start()
+
+    def summary(self):
+        out = []
+        for n in self.names:
+            c = self.caps_of(n)
+            out.append({
+                "name": n,
+                "label": n.replace(".json", ""),
+                "ok": c.get("ok", False),
+                "error": c.get("error"),
+                "kind": c.get("kind", "?"),
+                "has_prompt": bool(c.get("prompt")),
+                "can_image": bool(c.get("images")),
+                "image_slots": len(c.get("images") or []),
+                "size_mode": c.get("size_mode", "none"),
+                "can_seed": bool(c.get("sampler")),
+                "can_lora": bool(c.get("loras")),
+            })
+        return out
+
+
+def _trace_text(nodes, ref, depth=0, seen=None):
+    """从某条连线一路向上找「文本控件」节点"""
+    if not isinstance(ref, list) or depth > 5:
+        return None
+    seen = seen or set()
+    nid = str(ref[0])
+    if nid in seen or nid not in nodes:
+        return None
+    seen.add(nid)
+    node = nodes[nid]
+    inputs = node.get("inputs") or {}
+    for k, v in inputs.items():
+        if isinstance(v, str) and k in TEXT_KEYS and v.strip():
+            return (nid, k)
+    # 先走条件/文本类输入，再兜底其它
+    keys = [k for k in inputs if k in ("conditioning", "positive", "text", "string", "clip", "value")]
+    keys += [k for k in inputs if k not in keys]
+    for k in keys:
+        got = _trace_text(nodes, inputs.get(k), depth + 1, seen)
+        if got:
+            return got
+    return None
+
+
+def _first_text_node(nodes):
+    for nid, n in nodes.items():
+        for k, v in (n.get("inputs") or {}).items():
+            if isinstance(v, str) and k in TEXT_KEYS and v.strip():
+                return (nid, k)
+    # 空的也算（文生图模板常见空提示词）
+    for nid, n in nodes.items():
+        for k in (n.get("inputs") or {}):
+            if k in TEXT_KEYS:
+                return (nid, k)
+    return None
+
+
+def probe(p):
+    """从 API 格式 prompt 里探测可操作的节点"""
+    nodes = p
+    caps = {"nodes": len(nodes), "images": [], "loras": [], "size_mode": "none"}
+
+    # 采样器 + 正向提示词
+    sampler = next((nid for nid, n in nodes.items()
+                    if n["class_type"] in SAMPLERS), None)
+    caps["sampler"] = sampler
+    prompt_target = None
+    if sampler:
+        prompt_target = _trace_text(nodes, nodes[sampler]["inputs"].get("positive"))
+        if not prompt_target:
+            prompt_target = _trace_text(nodes, nodes[sampler]["inputs"].get("conditioning"))
+    if not prompt_target:
+        prompt_target = _first_text_node(nodes)
+    caps["prompt"] = prompt_target
+
+    # 参考图位
+    for nid, n in nodes.items():
+        if n["class_type"] in ("LoadImage", "LoadImageMask"):
+            caps["images"].append((nid, "image"))
+    caps["image_list"] = [(nid, n["class_type"]) for nid, n in nodes.items()
+                          if n["class_type"] in ("LoadImage", "LoadImageMask")]
+
+    # 尺寸
+    for nid, n in nodes.items():
+        if n["class_type"] in SIZE_FIRST:
+            caps["size_mode"] = "resolution"
+            caps["size_node"] = nid
+            break
+    if caps["size_mode"] == "none":
+        for nid, n in nodes.items():
+            ins = n.get("inputs") or {}
+            if "width" in ins and "height" in ins and not isinstance(ins["width"], list):
+                caps["size_mode"] = "wh"
+                caps["size_node"] = nid
+                break
+
+    # LoRA / 输出节点 / 视频批处理
+    for nid, n in nodes.items():
+        if n["class_type"] in ("LoraLoaderModelOnly", "LoraLoader"):
+            caps["loras"].append(nid)
+
+    classes = {n["class_type"] for n in nodes.values()}
+    if any("Video" in c or c.startswith("VHS_") for c in classes):
+        caps["kind"] = "视频"
+    elif any(c in ("BiRefNet", "ImageRemoveBackground", "RemoveBackground") or "Matting" in c
+             or "Cutout" in c for c in classes):
+        caps["kind"] = "抠图"
+    elif any("Upscale" in c or "FlashVSR" in c for c in classes):
+        caps["kind"] = "放大"
+    elif caps["images"]:
+        caps["kind"] = "图生图"
+    else:
+        caps["kind"] = "文生图"
+    return caps
+
+
+def apply_params(prompt, caps, *, text=None, image=None, aspect=None, megapixels=None,
+                 width=None, height=None, seed=None, lora=None, prefix="comfy_ui"):
+    """按能力把参数写进 API prompt"""
+    touched = []
+
+    if text is not None and caps.get("prompt"):
+        nid, key = caps["prompt"]
+        prompt[nid]["inputs"][key] = text
+        touched.append("prompt")
+
+    if image and caps.get("images"):
+        nid, key = caps["images"][0]
+        prompt[nid]["inputs"][key] = image
+        touched.append("image")
+
+    if caps.get("size_mode") == "resolution":
+        n = prompt[caps["size_node"]]["inputs"]
+        if aspect:
+            n["aspect_ratio"] = aspect
+        if megapixels:
+            n["megapixels"] = float(megapixels)
+        n.setdefault("multiple", 32)
+        touched.append("size")
+    elif caps.get("size_mode") == "wh":
+        n = prompt[caps["size_node"]]["inputs"]
+        if width and height:
+            n["width"], n["height"] = int(width), int(height)
+            touched.append("size")
+        elif aspect and megapixels:
+            w, h = ratio_to_size(aspect, float(megapixels))
+            n["width"], n["height"] = w, h
+            touched.append("size")
+
+    if seed is not None and caps.get("sampler"):
+        ins = prompt[caps["sampler"]]["inputs"]
+        if "seed" in ins and not isinstance(ins["seed"], list):
+            ins["seed"] = int(seed)
+            touched.append("seed")
+        elif "noise_seed" in ins and not isinstance(ins["noise_seed"], list):
+            ins["noise_seed"] = int(seed)
+            touched.append("seed")
+
+    if lora is not None and caps.get("loras"):
+        for nid in caps["loras"]:
+            prompt[nid]["inputs"]["strength_model"] = float(lora)
+        touched.append("lora")
+
+    for nid, n in prompt.items():
+        if n["class_type"] in ("SaveImage", "SaveVideo", "VHS_VideoCombine"):
+            if "filename_prefix" in n["inputs"] and not isinstance(n["inputs"]["filename_prefix"], list):
+                n["inputs"]["filename_prefix"] = prefix
+    return touched
+
+
+def ratio_to_size(aspect, mp):
+    ar = {"1:1 (Square)": 1.0, "4:3 (Standard)": 4 / 3, "3:2 (Photo)": 3 / 2,
+          "16:9 (Widescreen)": 16 / 9, "3:4 (Portrait Standard)": 3 / 4,
+          "2:3 (Portrait Photo)": 2 / 3, "9:16 (Portrait Widescreen)": 9 / 16}
+    r = ar.get(aspect, 16 / 9)
+    w = (mp * 1e6 * r) ** 0.5
+    h = w / r
+    step = 32
+    return max(step, int(round(w / step)) * step), max(step, int(round(h / step)) * step)
+
+
+# ============================ 数据存储 ============================
+class Store:
+    def __init__(self):
+        self.items = []
+        self.jobs = {}
+        self.load()
+
+    def load(self):
+        if os.path.exists(RECORDS):
+            try:
+                with open(RECORDS, "r", encoding="utf-8") as f:
+                    self.items = json.load(f)
+            except Exception:                    # noqa: BLE001
+                self.items = []
+
+    def save(self):
+        tmp = RECORDS + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(self.items, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, RECORDS)
+
+    def add(self, item):
+        with _lock:
+            self.items.insert(0, item)
+            self.save()
+
+    def update(self, prompt_id, **kw):
+        with _lock:
+            for it in self.items:
+                if it.get("prompt_id") == prompt_id:
+                    it.update(kw)
+                    break
+            self.save()
+
+    def drop(self, prompt_id):
+        with _lock:
+            self.items = [i for i in self.items if i.get("prompt_id") != prompt_id]
+            self.save()
+
+
+# ============================ 局域网共享（FileShare Pro）============================
+SHARE_BASE = os.environ.get("SHARE_SERVER") or _CFG.get("share_server") or ""
+
+
+class ShareHub:
+    """以一个在线成员身份连到 FileShare Pro，缓存它的实时状态并提供操作"""
+
+    def __init__(self, base, name="Comfy 工作台", device="workbench"):
+        self.base = base.rstrip("/")
+        self.name = name
+        self.device = device
+        self.state = {"users": [], "files": [], "chat": [], "clipboard": [],
+                      "stats": {}, "net": {}, "lan": "", "me": None}
+        self.connected = False
+        self._stop = False
+        self._thread = None
+        self._beat = None
+        self.id = self._load_id()
+
+    def _load_id(self):
+        p = os.path.join(DATA_DIR, "share_id.txt")
+        try:
+            if os.path.exists(p):
+                with open(p, "r", encoding="utf-8") as f:
+                    v = f.read().strip()
+                    if v:
+                        return v
+        except Exception:                        # noqa: BLE001
+            pass
+        nid = "workbench-" + uuid.uuid4().hex[:8]
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(nid)
+        return nid
+
+    def start(self):
+        if not self.base:                    # 没配共享盘就彻底静默，别刷错误
+            self.connected = False
+            return
+        if self._thread:
+            return
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+        self._beat = threading.Thread(target=self._heartbeat, daemon=True)
+        self._beat.start()
+
+    def _heartbeat(self):
+        while not self._stop:
+            try:
+                self._post("/api/presence", {"id": self.id, "name": self.name, "device": self.device})
+            except Exception:                    # noqa: BLE001
+                pass
+            time.sleep(8)
+
+    def _loop(self):
+        while not self._stop:
+            try:
+                q = urllib.parse.urlencode({"id": self.id, "name": self.name, "device": self.device})
+                with urllib.request.urlopen(self.base + "/api/events?" + q, timeout=180) as r:
+                    self.connected = True
+                    for raw in r:
+                        line = raw.decode("utf-8", "replace").strip()
+                        if not line.startswith("data:"):
+                            continue
+                        try:
+                            msg = json.loads(line[5:].strip())
+                        except Exception:            # noqa: BLE001
+                            continue
+                        self._apply(msg.get("type"), msg.get("payload"))
+            except Exception:                    # noqa: BLE001
+                self.connected = False
+                time.sleep(3)
+
+    def _apply(self, typ, payload):
+        p = payload if isinstance(payload, dict) else {}
+        with _lock:
+            if typ == "snapshot":
+                self.state.update({
+                    "me": p.get("me"),
+                    "users": p.get("users") or [],
+                    "files": p.get("files") or [],
+                    "chat": p.get("chat") or [],
+                    "clipboard": p.get("clipboard") or [],
+                    "stats": p.get("stats") or {},
+                    "net": p.get("net") or {},
+                    "lan": p.get("lan") or "",
+                })
+                if p.get("me"):
+                    self.id = p["me"]
+            elif typ == "presence":
+                self.state["users"] = payload if isinstance(payload, list) else []
+            elif typ == "files":
+                self.state["files"] = p.get("files") or []
+                self.state["stats"] = p.get("stats") or self.state["stats"]
+            elif typ == "chat":
+                if isinstance(payload, list):
+                    self.state["chat"] = payload
+                elif "chat" in p:
+                    self.state["chat"] = p["chat"]
+                elif p.get("text"):
+                    self.state["chat"] = (self.state["chat"] + [p])[-200:]
+            elif typ == "clipboard":
+                if isinstance(payload, list):
+                    self.state["clipboard"] = payload
+                elif "clipboard" in p:
+                    self.state["clipboard"] = p["clipboard"]
+            elif typ == "stats" and isinstance(payload, dict):
+                self.state["stats"] = payload
+            elif typ == "net" and isinstance(payload, dict):
+                self.state["net"] = payload
+
+    def snapshot(self):
+        with _lock:
+            lan = self.state.get("lan")
+            if isinstance(lan, list):
+                lan = next((x.get("address") for x in lan
+                            if isinstance(x, dict) and x.get("address")), "")
+            elif isinstance(lan, dict):
+                lan = lan.get("address") or ""
+            return {
+                "connected": self.connected,
+                "disabled": not self.base,
+                "name": self.name,
+                "me": self.id,
+                "users": self.state["users"],
+                "files": self.state["files"],
+                "chat": self.state["chat"],
+                "clipboard": self.state["clipboard"],
+                "stats": self.state["stats"],
+                "net": self.state["net"],
+                "lan": lan or "",
+                "server": self.base,
+            }
+
+    # ---------- 操作 ----------
+    def _post(self, path, data):
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(self.base + path, data=body, method="POST",
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read().decode("utf-8"))
+
+    def chat(self, text):
+        return self._post("/api/chat", {"text": text, "from": self.name, "fromId": self.id})
+
+    def clip(self, text):
+        return self._post("/api/clipboard", {"text": text, "from": self.name})
+
+    def clear_chat(self):
+        return self._post("/api/chat/clear", {})
+
+    def clear_clip(self):
+        return self._post("/api/clipboard/clear", {})
+
+    def delete_file(self, fid):
+        req = urllib.request.Request(self.base + f"/api/file/{fid}", method="DELETE")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read().decode("utf-8"))
+
+    def download(self, fid):
+        with urllib.request.urlopen(self.base + f"/api/download/{fid}", timeout=300) as r:
+            return r.read(), r.headers.get("Content-Type") or "application/octet-stream"
+
+    def upload(self, filename, data, mime=None):
+        boundary = "----share" + uuid.uuid4().hex
+        mime = mime or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        head = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
+                f"Content-Type: {mime}\r\n\r\n").encode("utf-8")
+        tail = f"\r\n--{boundary}--\r\n".encode("utf-8")
+        body = head + data + tail
+        q = urllib.parse.urlencode({"uploader": self.name})
+        req = urllib.request.Request(self.base + "/api/upload?" + q, data=body, method="POST",
+                                     headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+        with urllib.request.urlopen(req, timeout=600) as r:
+            return json.loads(r.read().decode("utf-8"))
+
+
+SHARE = ShareHub(SHARE_BASE)
+
+
+# ============================ 服务 ============================
+CLIENT = Comfy(DEFAULTS["server"], DEFAULTS["user"], DEFAULTS["password"])
+REG = Registry(CLIENT)
+STORE = Store()
+
+# ============================ 登录 / Basic Auth ============================
+AUTH_FILE = os.path.join(DATA_DIR, "auth.json")
+SESSION_TTL = 7 * 24 * 3600
+COOKIE = "cw_sid"
+_sessions = {}          # token -> {"user": ..., "ts": ...}
+_auth_lock = threading.Lock()
+
+
+def _load_auth():
+    try:
+        with open(AUTH_FILE, "r", encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:                        # noqa: BLE001
+        return {}
+
+
+def _save_auth(d):
+    try:
+        with open(AUTH_FILE, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False)
+    except Exception:                        # noqa: BLE001
+        pass
+
+
+def apply_creds(user, password):
+    """把凭据装到全局 Comfy 客户端 + DEFAULTS（上传/观看图都用它）"""
+    DEFAULTS["user"], DEFAULTS["password"] = user, password
+    token = base64.b64encode(f"{user}:{password}".encode("utf-8")).decode("ascii")
+    CLIENT.auth = "Basic " + token
+
+
+def verify_credentials(user, password, server=None, timeout=15):
+    """用给定账号真实请求 ComfyUI，成功则返回 (True, meta)"""
+    srv = (server or DEFAULTS["server"]).rstrip("/")
+    c = Comfy(srv, user, password, timeout=timeout)
+    t0 = time.time()
+    ss = c.system_stats()
+    qq = c.queue_info()
+    dev = (ss.get("devices") or [{}])[0]
+    return True, {
+        "server": srv,
+        "gpu": (dev.get("name") or "").split(":")[-1].strip(),
+        "vram_free_gb": round((dev.get("vram_free") or 0) / 1024 ** 3, 1),
+        "version": (ss.get("system") or {}).get("comfyui_version"),
+        "ms": int((time.time() - t0) * 1000),
+        "queue": len(qq.get("queue_running", [])) + len(qq.get("queue_pending", [])),
+    }
+
+
+def probe_server(timeout=5):
+    """不带凭据探活：401 也算在线，只有连不上才判离线"""
+    srv = DEFAULTS["server"].rstrip("/")
+    t0 = time.time()
+    try:
+        urllib.request.urlopen(urllib.request.Request(srv + "/api/queue", method="GET"),
+                               timeout=timeout)
+        online = True
+    except urllib.error.HTTPError:
+        online = True                      # 401 / 403：服务在，只是要凭据
+    except Exception as e:                 # noqa: BLE001
+        return {"online": False, "ms": int((time.time() - t0) * 1000),
+                "error": f"{type(e).__name__}: {e}"}
+    return {"online": online, "ms": int((time.time() - t0) * 1000)}
+
+
+def new_session(user):
+    tok = secrets.token_urlsafe(24)
+    with _auth_lock:
+        _sessions[tok] = {"user": user, "ts": time.time()}
+    return tok
+
+
+def drop_session(headers):
+    tok = _token_of(headers)
+    if tok:
+        _sessions.pop(tok, None)
+
+
+def _cookie_token(headers):
+    raw = headers.get("Cookie") or ""
+    for part in raw.split(";"):
+        k, _, v = part.strip().partition("=")
+        if k == COOKIE and v:
+            return v
+    return None
+
+
+def _token_of(headers, query=None):
+    """会话 token：Cookie / X-CW-Token 头 / ?t= 参数 三者任一。
+
+    跨域部署时浏览器带不上 Cookie，前端改用 X-CW-Token 头；图片没法加头，
+    就退化成 URL 上的 ?t=。
+    """
+    tok = _cookie_token(headers)
+    if tok:
+        return tok
+    tok = headers.get("X-CW-Token")
+    if tok:
+        return tok.strip()
+    if query:
+        tok = (query.get("t") or [""])[0]
+        if tok:
+            return tok.strip()
+    return None
+
+
+def session_of(headers, query=None):
+    tok = _token_of(headers, query)
+    if not tok:
+        return None
+    s = _sessions.get(tok)
+    if not s:
+        return None
+    if time.time() - s["ts"] > SESSION_TTL:
+        _sessions.pop(tok, None)
+        return None
+    s["ts"] = time.time()
+    return s
+
+
+# 启动时沿用上次验证过的凭据（没有就用默认 comfy / Comfy-5b51ea51）
+_saved = _load_auth()
+if _saved.get("username") and _saved.get("password"):
+    try:
+        DEFAULTS["server"] = _saved.get("server") or DEFAULTS["server"]
+        apply_creds(_saved["username"], _saved["password"])
+    except Exception:                        # noqa: BLE001
+        pass
+
+
+def watch(pid):
+    STORE.jobs[pid] = {"status": "queued"}
+    deadline = time.time() + 5400
+    started = False
+    while time.time() < deadline:
+        time.sleep(2)
+        try:
+            hist = CLIENT.get(f"/api/history/{pid}")
+        except ComfyError as e:
+            STORE.jobs[pid] = {"status": "error", "message": str(e)}
+            STORE.update(pid, status="error", message=str(e))
+            return
+        if pid in hist:
+            entry = hist[pid]
+            status = (entry.get("status") or {}).get("status_str")
+            outs = []
+            for node_out in (entry.get("outputs") or {}).values():
+                for key in ("images", "gifs", "videos"):
+                    for item in node_out.get(key, []) or []:
+                        outs.append({"filename": item.get("filename"),
+                                     "subfolder": item.get("subfolder", ""),
+                                     "type": item.get("type", "output"),
+                                     "kind": key})
+            if status == "error":
+                msg = "执行失败"
+                for m in (entry.get("status") or {}).get("messages", []):
+                    if m[0] == "execution_error":
+                        msg = (m[1] or {}).get("exception_message", msg)
+                STORE.jobs[pid] = {"status": "error", "message": msg}
+                STORE.update(pid, status="error", message=msg)
+                return
+            STORE.jobs[pid] = {"status": "done", "outputs": outs}
+            STORE.update(pid, status="done", files=outs, finished=time.time())
+            return
+        q = CLIENT.queue_info()
+        running = any(j[1] == pid for j in q.get("queue_running", []))
+        if running and not started:
+            started = True
+            STORE.update(pid, run_start=time.time())
+        STORE.jobs[pid] = {"status": "running" if running else "queued"}
+    STORE.jobs[pid] = {"status": "error", "message": "等待超时"}
+
+
+def estimate_seconds(workflow):
+    """按同工作流历史「真正开跑→出图」的时长估秒数（不含排队等待）。"""
+    spans = []
+    for it in STORE.items:
+        if it.get("workflow") != workflow:
+            continue
+        s, f = it.get("run_start"), it.get("finished")
+        if s and f and f > s and it.get("status") == "done":
+            spans.append(f - s)
+    spans = spans[:6]
+    if not spans:
+        return 30
+    spans.sort()
+    return max(5, min(240, int(spans[len(spans) // 2])))
+
+
+STALE_SECONDS = 180
+
+
+def _collect_outputs(entry):
+    outs = []
+    for node_out in (entry.get("outputs") or {}).values():
+        for key in ("images", "gifs", "videos"):
+            for item in node_out.get(key, []) or []:
+                outs.append({"filename": item.get("filename"),
+                             "subfolder": item.get("subfolder", ""),
+                             "type": item.get("type", "output"),
+                             "kind": key})
+    return outs
+
+
+def job_status(pid):
+    """给生成过程页用的状态快照：排队位次 / 预计时长 / 已用时间 / 结果文件。"""
+    item = next((i for i in STORE.items if i.get("prompt_id") == pid), None) or {}
+    job = STORE.jobs.get(pid) or {}
+    running_pids, pending_pids = [], []
+    queue_ok = False
+    try:
+        qq = CLIENT.queue_info()
+        running_pids = [j[1] for j in qq.get("queue_running", [])]
+        pending_pids = [j[1] for j in qq.get("queue_pending", [])]
+        queue_ok = True
+    except Exception:                        # noqa: BLE001
+        pass
+    ahead = None
+    if pid in pending_pids:
+        ahead = len(running_pids) + pending_pids.index(pid)
+    elif pid in running_pids:
+        ahead = 0
+    status = job.get("status") or item.get("status") or "queued"
+    message = job.get("message") or item.get("message") or ""
+    files = item.get("files") or job.get("outputs") or []
+    # 队列里已经没有它、但记录仍停在 queued/running：先尝试从 history 捞结果，
+    # 捞不到再判为中断（否则会话流里会永久挂着一张「生成中」）。
+    if status not in ("done", "error") and queue_ok \
+            and pid not in running_pids and pid not in pending_pids:
+        hist = None
+        try:
+            h = CLIENT.get(f"/api/history/{pid}")
+            if pid in h:
+                hist = h[pid]
+        except Exception:                    # noqa: BLE001
+            hist = None
+        if hist:
+            st = (hist.get("status") or {}).get("status_str")
+            outs = _collect_outputs(hist)
+            if st == "error":
+                message = "执行失败"
+                for m in (hist.get("status") or {}).get("messages", []):
+                    if m[0] == "execution_error":
+                        message = (m[1] or {}).get("exception_message", message)
+                status = "error"
+                STORE.update(pid, status="error", message=message)
+            else:
+                status = "done"
+                files = outs
+                STORE.update(pid, status="done", files=outs, finished=time.time())
+            STORE.jobs[pid] = {"status": status, "outputs": outs, "message": message}
+        elif time.time() - (item.get("created") or 0) > STALE_SECONDS:
+            status = "error"
+            message = "任务已中断：ComfyUI 队列里已没有这个任务，请重新生成"
+            STORE.update(pid, status="error", message=message)
+            STORE.jobs[pid] = {"status": "error", "message": message}
+    if status in ("done", "error"):
+        ahead = 0
+    base = item.get("run_start") if status == "running" and item.get("run_start") else item.get("created")
+    created = base or 0
+    return {
+        "prompt_id": pid,
+        "status": status,
+        "ahead": ahead,
+        "queue_running": len(running_pids),
+        "queue_pending": len(pending_pids),
+        "elapsed": max(0, int(time.time() - created)) if created else 0,
+        "est": estimate_seconds(item.get("workflow")),
+        "message": message,
+        "files": files,
+        "item": item,
+    }
+
+
+def reconcile_stale():
+    """服务启动后清掉「僵尸任务」：记录还停在 queued/running，但 ComfyUI 队列里早已没有它。"""
+    time.sleep(3)
+    try:
+        qq = CLIENT.queue_info()
+        live = {j[1] for j in qq.get("queue_running", [])} | {j[1] for j in qq.get("queue_pending", [])}
+    except Exception:                        # noqa: BLE001
+        return
+    changed = 0
+    for it in list(STORE.items):
+        if it.get("status") in ("done", "error"):
+            continue
+        pid = it.get("prompt_id")
+        if not pid or pid in live:
+            continue
+        try:
+            if pid in CLIENT.get(f"/api/history/{pid}"):
+                job_status(pid)              # 让 history 里的结果回填
+                continue
+        except Exception:                    # noqa: BLE001
+            pass
+        if time.time() - (it.get("created") or 0) <= STALE_SECONDS:
+            continue
+        STORE.update(pid, status="error",
+                     message="任务已中断：ComfyUI 队列里已没有这个任务，请重新生成")
+        STORE.jobs[pid] = {"status": "error", "message": "任务已中断"}
+        changed += 1
+    if changed:
+        print(f"· 已清理 {changed} 个中断任务")
+
+
+def submit_one(*, workflow, text, image, aspect, megapixels, width, height, seed, lora, prefix):
+    caps = REG.caps_of(workflow)
+    if not caps.get("ok"):
+        raise ComfyError(400, f"工作流不可用：{caps.get('error')}")
+    api = REG.base_prompt(workflow)
+    apply_params(api, caps, text=text, image=image, aspect=aspect, megapixels=megapixels,
+                 width=width, height=height, seed=seed, lora=lora, prefix=prefix)
+    res = CLIENT.submit(api)
+    if res.get("node_errors"):
+        raise ComfyError(200, json.dumps(res["node_errors"], ensure_ascii=False))
+    pid = res["prompt_id"]
+    item = {
+        "id": pid, "prompt_id": pid, "workflow": workflow, "prompt": text,
+        "aspect": aspect, "megapixels": megapixels, "width": width, "height": height,
+        "seed": seed, "image": image, "status": "queued",
+        "created": time.time(), "files": [],
+    }
+    STORE.add(item)
+    threading.Thread(target=watch, args=(pid,), daemon=True).start()
+    return pid
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "ComfyWorkbench/2.0"
+
+    def log_message(self, fmt, *args):
+        pass
+
+    # ---------- 跨域（线上页面直连本机后端时用） ----------
+    def _cors(self):
+        origin = self.headers.get("Origin")
+        if not origin:
+            return
+        allow = DEFAULTS.get("cors") or ""
+        if allow and allow != "*":
+            if origin not in [x.strip() for x in allow.split(",") if x.strip()]:
+                return
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Allow-Credentials", "true")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-CW-Token, Range")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._cors()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    # ---------- 输出 ----------
+    def _json(self, obj, code=200, cookie=None):
+        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self._cors()
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _bytes(self, data, ctype="application/octet-stream"):
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "max-age=300")
+        self._cors()
+        self.end_headers()
+        self.wfile.write(data)
+
+    # ---------- 原版 ComfyUI 反代（给「工作流控制」页用） ----------
+    def _redirect(self, to):
+        self.send_response(302)
+        self.send_header("Location", to)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _proxy_comfy(self, method="GET"):
+        """把 /comfy/... 透传给 ComfyUI，并代填 Basic Auth（iframe 里不用再弹认证框）。"""
+        rest = self.path[len("/comfy"):]           # 保留 path + query
+        if not rest.startswith("/"):
+            rest = "/" + rest
+        url = DEFAULTS["server"].rstrip("/") + rest
+        hdrs = {"Authorization": "Basic " + base64.b64encode(
+            f"{DEFAULTS['user']}:{DEFAULTS['password']}".encode()).decode()}
+        for h in ("Accept", "Content-Type", "Range", "If-None-Match"):
+            v = self.headers.get(h)
+            if v:
+                hdrs[h] = v
+        body = None
+        if method in ("POST", "PUT", "PATCH", "DELETE"):
+            n = int(self.headers.get("Content-Length") or 0)
+            body = self.rfile.read(n) if n else b""
+        req = urllib.request.Request(url, data=body, method=method, headers=hdrs)
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                data, code, hd = r.read(), r.status, r.headers
+        except urllib.error.HTTPError as e:
+            data, code, hd = e.read(), e.code, e.headers
+        ctype = hd.get("Content-Type") or "application/octet-stream"
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        # HEAD 请求不写 body
+        if method != "HEAD":
+            self.wfile.write(data)
+
+    def _body(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        return self.rfile.read(n) if n else b"{}"
+
+    def _payload(self):
+        try:
+            return json.loads(self._body().decode("utf-8") or "{}")
+        except Exception:                        # noqa: BLE001
+            return {}
+
+    # ---------- 登录 ----------
+    def _login(self):
+        p = self._payload()
+        user = (p.get("username") or "").strip()
+        pwd = p.get("password") or ""
+        server = (p.get("server") or DEFAULTS["server"]).strip()
+        if not user or not pwd:
+            return self._json({"error": "请填写用户名和密码", "need_login": True}, 400)
+        if not server.startswith(("http://", "https://")):
+            server = "http://" + server
+        try:
+            ok, meta = verify_credentials(user, pwd, server, timeout=15)
+        except ComfyError as e:
+            if e.status in (401, 403):
+                return self._json({"error": "账号或密码不正确（ComfyUI 返回 401）"}, 401)
+            if e.status == 0:
+                return self._json({"error": f"连不上 {server}：{e.body}"}, 502)
+            return self._json({"error": f"ComfyUI 返回 {e.status}：{e.body[:200]}"}, 502)
+        except Exception as e:                   # noqa: BLE001
+            return self._json({"error": f"{type(e).__name__}: {e}"}, 500)
+
+        apply_creds(user, pwd)
+        _save_auth({"server": meta["server"], "username": user,
+                    "password": pwd, "verified": time.time()})
+        tok = new_session(user)
+        cookie = f"{COOKIE}={tok}; Path=/; Max-Age={SESSION_TTL}; HttpOnly; SameSite=Lax"
+        return self._json({"ok": True, "user": user, "meta": meta, "token": tok},
+                          cookie=cookie)
+
+    # ---------- 鉴权 ----------
+    OPEN_PATHS = ("/api/login", "/api/login/status", "/api/logout")
+
+    def _guard(self):
+        """未登录时直接回 401；返回 True 表示放行"""
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        if session_of(self.headers, query):
+            return True
+        self._json({"error": "未登录或登录已失效", "need_login": True}, 401)
+        return False
+
+    # ---------- GET ----------
+    def do_GET(self):
+        path = urllib.parse.urlparse(self.path).path
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        try:
+            if path == "/comfy":
+                return self._redirect("/comfy/")
+            if path.startswith("/comfy/"):
+                return self._proxy_comfy("GET")
+
+            if path in ("/", "/index.html"):
+                with open(os.path.join(HERE, "index.html"), "rb") as f:
+                    return self._bytes(f.read(), "text/html; charset=utf-8")
+
+            if path == "/api/login/status":
+                sess = session_of(self.headers)
+                info = {
+                    "authed": bool(sess),
+                    "user": (sess or {}).get("user"),
+                    "server": DEFAULTS["server"],
+                    "default_user": DEFAULTS["user"],
+                    "probe": probe_server(),
+                }
+                if sess:
+                    try:
+                        _, meta = verify_credentials(DEFAULTS["user"], DEFAULTS["password"], timeout=8)
+                        info.update({"online": True, "meta": meta})
+                    except Exception as e:                       # noqa: BLE001
+                        info.update({"online": False, "error": str(e)})
+                return self._json(info)
+
+            if path.startswith("/api/") and path not in self.OPEN_PATHS:
+                if not self._guard():
+                    return
+
+            if path == "/api/state":
+                return self._json({
+                    "items": STORE.items,
+                    "jobs": STORE.jobs,
+                    "ratios": RATIOS,
+                    "server": DEFAULTS["server"],
+                    "workflows": REG.summary() if REG.names else [],
+                    "default_workflow": DEFAULTS["default_workflow"],
+                })
+
+            if path == "/api/workflows":
+                return self._json({"workflows": REG.summary()})
+
+            if path == "/api/img":
+                fn = (q.get("filename") or [""])[0]
+                sub = (q.get("subfolder") or [""])[0]
+                typ = (q.get("type") or ["output"])[0]
+                if not fn:
+                    return self._json({"error": "missing filename"}, 400)
+                data = CLIENT.get("/api/view?" + urllib.parse.urlencode(
+                    {"filename": fn, "subfolder": sub, "type": typ}))
+                return self._bytes(data, mimetypes.guess_type(fn)[0] or "image/png")
+
+            if path == "/api/share/state":
+                SHARE.start()
+                return self._json(SHARE.snapshot())
+
+            if path == "/api/share/download":
+                fid = (q.get("id") or [""])[0]
+                if not fid:
+                    return self._json({"error": "missing id"}, 400)
+                data, ctype = SHARE.download(fid)
+                name = next((f.get("name", fid) for f in SHARE.snapshot()["files"]
+                             if f.get("id") == fid), fid)
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Content-Disposition",
+                                 "inline; filename*=UTF-8''" + urllib.parse.quote(name))
+                self.send_header("Cache-Control", "max-age=600")
+                self.end_headers()
+                self.wfile.write(data)
+                return
+
+            if path == "/api/health":
+                ss = CLIENT.system_stats()
+                dev = (ss.get("devices") or [{}])[0]
+                qq = CLIENT.queue_info()
+                return self._json({
+                    "ok": True,
+                    "gpu": (dev.get("name") or "").split(":")[-1].strip(),
+                    "vram_free_gb": round((dev.get("vram_free") or 0) / 1024 ** 3, 1),
+                    "vram_total_gb": round((dev.get("vram_total") or 0) / 1024 ** 3, 1),
+                    "running": len(qq.get("queue_running", [])),
+                    "pending": len(qq.get("queue_pending", [])),
+                })
+
+            if path == "/api/genstatus":
+                pid = (q.get("pid") or [""])[0]
+                if not pid:
+                    return self._json({"error": "missing pid"}, 400)
+                return self._json(job_status(pid))
+
+            # 未知路径统一兜底给原版 ComfyUI：内嵌页会用到 /assets、/extensions、
+            # /scripts、/api/xxx 这类绝对路径请求，工作台没占用的都该落到 ComfyUI。
+            return self._proxy_comfy("GET")
+        except ComfyError as e:
+            return self._json({"error": str(e)}, 502)
+        except Exception as e:                   # noqa: BLE001
+            return self._json({"error": f"{type(e).__name__}: {e}"}, 500)
+
+    # ---------- POST ----------
+    def do_POST(self):
+        path = urllib.parse.urlparse(self.path).path
+        try:
+            if path.startswith("/comfy/"):
+                return self._proxy_comfy("POST")
+
+            if path == "/api/login":
+                return self._login()
+
+            if path == "/api/logout":
+                drop_session(self.headers)
+                return self._json({"ok": True},
+                                  cookie=f"{COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
+
+            if path.startswith("/api/") and path not in self.OPEN_PATHS:
+                if not self._guard():
+                    return
+
+            if path == "/api/upload":
+                raw = self._body()
+                req = urllib.request.Request(
+                    DEFAULTS["server"] + "/api/upload/image", data=raw, method="POST",
+                    headers={"Content-Type": self.headers.get("Content-Type", "")})
+                tok = base64.b64encode(
+                    f"{DEFAULTS['user']}:{DEFAULTS['password']}".encode()).decode()
+                req.add_header("Authorization", "Basic " + tok)
+                with urllib.request.urlopen(req, timeout=180) as r:
+                    data = json.loads(r.read().decode("utf-8"))
+                sub = data.get("subfolder", "")
+                name = data.get("name", "")
+                return self._json({"name": f"{sub}/{name}" if sub else name})
+
+            if path == "/api/generate":
+                p = self._payload()
+                pid = submit_one(
+                    workflow=p.get("workflow") or DEFAULTS["default_workflow"],
+                    text=(p.get("prompt") or "").strip(),
+                    image=p.get("image"), aspect=p.get("aspect"),
+                    megapixels=p.get("megapixels"), width=p.get("width"), height=p.get("height"),
+                    seed=p.get("seed"), lora=p.get("lora"), prefix="comfy_ui")
+                return self._json({"prompt_id": pid})
+
+            if path == "/api/batch":
+                p = self._payload()
+                prompts = [x.strip() for x in (p.get("prompts") or []) if str(x).strip()]
+                if not prompts:
+                    return self._json({"error": "没有可用的提示词"}, 400)
+                ids, errs = [], []
+                for text in prompts:
+                    try:
+                        pid = submit_one(
+                            workflow=p.get("workflow") or DEFAULTS["default_workflow"],
+                            text=text, image=p.get("image"), aspect=p.get("aspect"),
+                            megapixels=p.get("megapixels"), width=p.get("width"),
+                            height=p.get("height"), seed=p.get("seed"),
+                            lora=p.get("lora"), prefix="comfy_ui")
+                        ids.append(pid)
+                    except ComfyError as e:
+                        errs.append(f"{text[:24]}… → {e}")
+                return self._json({"accepted": len(ids), "prompt_ids": ids, "errors": errs})
+
+            if path == "/api/rerun":
+                p = self._payload()
+                src = next((i for i in STORE.items if i.get("prompt_id") == p.get("prompt_id")), None)
+                if not src:
+                    return self._json({"error": "找不到这条记录"}, 404)
+                pid = submit_one(
+                    workflow=src.get("workflow") or DEFAULTS["default_workflow"],
+                    text=src.get("prompt"), image=src.get("image"), aspect=src.get("aspect"),
+                    megapixels=src.get("megapixels"), width=src.get("width"), height=src.get("height"),
+                    seed=p.get("seed"), lora=p.get("lora"), prefix="comfy_ui")
+                return self._json({"prompt_id": pid})
+
+            if path == "/api/delete":
+                STORE.drop(self._payload().get("prompt_id"))
+                return self._json({"ok": True})
+
+            if path == "/api/share/chat":
+                p = self._payload()
+                text = (p.get("text") or "").strip()
+                if not text:
+                    return self._json({"error": "内容为空"}, 400)
+                SHARE.start()
+                return self._json(SHARE.chat(text[:2000]))
+
+            if path == "/api/share/clip":
+                p = self._payload()
+                text = p.get("text") or ""
+                if not text.strip():
+                    return self._json({"error": "内容为空"}, 400)
+                SHARE.start()
+                return self._json(SHARE.clip(text))
+
+            if path == "/api/share/chat/clear":
+                SHARE.start()
+                return self._json(SHARE.clear_chat())
+
+            if path == "/api/share/clip/clear":
+                SHARE.start()
+                return self._json(SHARE.clear_clip())
+
+            if path == "/api/share/delete":
+                fid = self._payload().get("id")
+                if not fid:
+                    return self._json({"error": "missing id"}, 400)
+                return self._json(SHARE.delete_file(fid))
+
+            if path == "/api/share/upload":
+                raw = self._body()
+                q = urllib.parse.urlencode({"uploader": SHARE.name})
+                req = urllib.request.Request(
+                    SHARE.base + "/api/upload?" + q, data=raw, method="POST",
+                    headers={"Content-Type": self.headers.get("Content-Type", "")})
+                with urllib.request.urlopen(req, timeout=600) as r:
+                    return self._json(json.loads(r.read().decode("utf-8")))
+
+            if path == "/api/share/import":
+                fid = self._payload().get("id")
+                if not fid:
+                    return self._json({"error": "missing id"}, 400)
+                data, _ctype = SHARE.download(fid)
+                name = next((f.get("name", "share.bin") for f in SHARE.snapshot()["files"]
+                             if f.get("id") == fid), "share.bin")
+                tmp = os.path.join(DATA_DIR, "import_" + str(int(time.time())) + "_" + name)
+                with open(tmp, "wb") as f:
+                    f.write(data)
+                up = CLIENT.upload_image(tmp)
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+                return self._json({"name": up, "filename": name})
+
+            if path == "/api/share/push":
+                p = self._payload()
+                fn = p.get("filename")
+                sub = p.get("subfolder") or ""
+                typ = p.get("type") or "output"
+                if not fn:
+                    return self._json({"error": "missing filename"}, 400)
+                data = CLIENT.get("/api/view?" + urllib.parse.urlencode(
+                    {"filename": fn, "subfolder": sub, "type": typ}))
+                SHARE.start()
+                return self._json(SHARE.upload(fn, data))
+
+            if path == "/api/refresh-workflows":
+                REG.sync()
+                REG.caps.clear()
+                REG.base.clear()
+                REG.errors.clear()
+                REG.warm()
+                return self._json({"workflows": REG.summary()})
+
+            # 未知 POST 同样兜底给 ComfyUI（内嵌页的 /prompt、/api/* 等）
+            return self._proxy_comfy("POST")
+        except ComfyError as e:
+            return self._json({"error": str(e)}, 502)
+        except Exception as e:                   # noqa: BLE001
+            return self._json({"error": f"{type(e).__name__}: {e}"}, 500)
+
+
+def bootstrap():
+    try:
+        names = REG.sync()
+        print(f"· 已同步工作流 {len(names)} 个")
+        REG.ensure_oi()
+        REG.warm()
+    except Exception as e:                       # noqa: BLE001
+        print(f"! 工作流同步失败：{e}")
+    try:
+        SHARE.start()
+        print(f"· 共享服务已接入：{SHARE.base}（身份 {SHARE.name}）")
+    except Exception as e:                       # noqa: BLE001
+        print(f"! 共享服务连接失败：{e}")
+
+
+def main():
+    ap = argparse.ArgumentParser(description="ComfyUI 本地工作台 v2")
+    ap.add_argument("--port", type=int, default=DEFAULTS["port"])
+    ap.add_argument("--open", action="store_true")
+    args = ap.parse_args()
+
+    bootstrap()
+    threading.Thread(target=reconcile_stale, daemon=True).start()
+    srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    url = f"http://127.0.0.1:{args.port}"
+    print(f"· 工作台已启动: {url}   （后端 {DEFAULTS['server']}）")
+    if args.open:
+        import webbrowser
+        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        print("\n· 已退出")
+
+
+if __name__ == "__main__":
+    main()

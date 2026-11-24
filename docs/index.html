@@ -881,7 +881,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script>window.CW_DEFAULT_API = '';</script>
+<script>window.CW_DEFAULT_API = "http://127.0.0.1:8787";</script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -1324,6 +1324,7 @@ function comfyBase(){ return (STATE && STATE.server) ? STATE.server.replace(/\/$
 function comfyProxy(p){ return (CW_API||'')+p; }
 function showFlow(){
   setSplit(false);
+  if(location.protocol==='https:' && /^http:/i.test(CW_API)) toast('线上 https 页面内嵌不了 http 后端，点「↗ 新窗口」打开',1);
   $('genView').classList.remove('show');
   if(genTimer){ clearInterval(genTimer); genTimer=null; }
   $('homeView').classList.remove('show');

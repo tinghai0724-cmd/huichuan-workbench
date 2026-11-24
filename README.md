@@ -97,3 +97,4 @@ pwsh tools/publish.ps1 -Repo tinghai0724-cmd/huichuan-workbench -Message "首页
 - `/ws` 没做 WebSocket 转发（stdlib HTTP 服务器不支持协议升级），内嵌 ComfyUI 里跑任务时节点进度可能不实时；要看实时进度点「↗ 新窗口」。
 - 共享盘依赖 `192.168.0.172:8080`，没配或不可达时共享页会显示未连接。
 - `records.json` 只在本地，仓库不含任何出图记录。
+- **公网暴露前注意**：`/comfy/*` 反代目前不校验登录（iframe 没法带请求头），相当于把 ComfyUI 直接开给任何拿到后端地址的人。用隧道暴露后端时，请在隧道层加访问策略（Cloudflare Access、Basic Auth），或只在可信网络里开。`/api/*` 都是要登录的。

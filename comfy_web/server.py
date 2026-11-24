@@ -19,6 +19,7 @@ import json
 import mimetypes
 import os
 import secrets
+import socket
 import sys
 import threading
 import time
@@ -58,6 +59,7 @@ DEFAULTS = {
     "workflow_dir": (os.environ.get("COMFY_WF_DIR") or _CFG.get("workflow_dir")
                      or os.path.join(ROOT, "comfy_wf")),
     "port": int(os.environ.get("PORT") or _CFG.get("port") or 8787),
+    "host": os.environ.get("CW_HOST") or _CFG.get("host") or "0.0.0.0",
     "default_workflow": _CFG.get("default_workflow") or "KOOK-Minimax-H3-image-尘星.json",
     "cors": os.environ.get("CW_CORS") or _CFG.get("cors") or "",
 }
@@ -914,8 +916,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Credentials", "true")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-CW-Token, Range")
+        self.send_header("Access-Control-Allow-Headers",
+                         "Content-Type, X-CW-Token, Range, Access-Control-Request-Private-Network")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        # Chrome 的 Private Network Access：公网 https 页面访问 127.0.0.1 需要显式放行
+        self.send_header("Access-Control-Allow-Private-Network", "true")
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -1317,17 +1322,50 @@ def bootstrap():
         print(f"! 共享服务连接失败：{e}")
 
 
+def lan_ips():
+    """本机所有内网 IPv4，用来在启动日志里直接告诉用户别人该访问哪个地址"""
+    def usable(ip):
+        # 排除回环、链路本地、以及 198.18/198.19 这类 VPN 基准测试网段
+        return not ip.startswith(("127.", "0.", "169.254.", "198.18.", "198.19."))
+
+    out = []
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if usable(ip) and ip not in out:
+                out.append(ip)
+    except Exception:                            # noqa: BLE001
+        pass
+    if not out:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            if usable(ip):
+                out.append(ip)
+        except Exception:                        # noqa: BLE001
+            pass
+    # 常见家用/办公网段排前面
+    out.sort(key=lambda ip: (0 if ip.startswith("192.168.") else 1 if ip.startswith("10.") else 2))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description="ComfyUI 本地工作台 v2")
     ap.add_argument("--port", type=int, default=DEFAULTS["port"])
+    ap.add_argument("--host", default=DEFAULTS["host"],
+                    help="监听地址，默认 0.0.0.0（同局域网其它电脑可访问）；只给本机用可传 127.0.0.1")
     ap.add_argument("--open", action="store_true")
     args = ap.parse_args()
 
     bootstrap()
     threading.Thread(target=reconcile_stale, daemon=True).start()
-    srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    srv = ThreadingHTTPServer((args.host, args.port), Handler)
     url = f"http://127.0.0.1:{args.port}"
-    print(f"· 工作台已启动: {url}   （后端 {DEFAULTS['server']}）")
+    print(f"· 工作台已启动: {url}   （监听 {args.host}:{args.port}，后端 {DEFAULTS['server']}）")
+    for ip in lan_ips():
+        print(f"· 局域网访问: http://{ip}:{args.port}")
     if args.open:
         import webbrowser
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()

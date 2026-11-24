@@ -30,6 +30,14 @@ python server.py --port 8787
 
 浏览器打开 `http://127.0.0.1:8787`，用 ComfyUI 的 Basic Auth 账号登录。
 
+**同局域网其它电脑**：服务默认监听 `0.0.0.0`，启动日志会打印 `局域网访问: http://192.168.x.x:8787`，别的电脑直接开这个地址（同源访问，没有跨域和 https 混合内容问题）。首次需要在 Windows 防火墙放行 8787 入站：
+
+```powershell
+netsh advfirewall firewall add rule name="Comfy Workbench 8787" dir=in action=allow protocol=TCP localport=8787
+```
+
+只给本机用时加 `--host 127.0.0.1`。
+
 ## 配置
 
 所有敏感信息都只在 `comfy_web/config.local.json`（已 gitignore），字段：

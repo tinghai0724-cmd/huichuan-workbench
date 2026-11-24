@@ -48,7 +48,13 @@ for ($i = 0; $i -lt 20; $i++) {
   Start-Sleep -Milliseconds 500
   try {
     $r = Invoke-WebRequest "http://127.0.0.1:$Port/api/login/status" -UseBasicParsing -TimeoutSec 3
-    if ($r.StatusCode -eq 200) { "本地工作台已启动：http://127.0.0.1:$Port"; break }
+    if ($r.StatusCode -eq 200) {
+      "本地工作台已启动：http://127.0.0.1:$Port"
+      $ips = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.IPAddress -like '192.168.*' -or $_.IPAddress -like '10.*' }).IPAddress
+      foreach ($ip in $ips) { "局域网访问（其它电脑用这个）：http://$ip`:$Port" }
+      break
+    }
   } catch {}
   if ($i -eq 19) {
     "服务未在 10 秒内起来，日志："

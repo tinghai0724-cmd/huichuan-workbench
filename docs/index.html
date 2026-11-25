@@ -2080,10 +2080,10 @@ function arOf(aspect){
 }
 function mpToPx(aspect, mp){
   const r=arOf(aspect), step=32;
-  let w=Math.max(step, Math.round(Math.sqrt(mp*1e6*r)/step)*step);
+  // 宽度向上取到 32 的整数倍（不低于目标面积），高度取最近的 32 倍数
+  let w=Math.max(step, Math.ceil(Math.sqrt(mp*1e6*r)/step)*step);
   let h=Math.max(step, Math.round((w/r)/step)*step);
-  // 面积没到目标就往上补一档，避免低于标称像素
-  for(let i=0;i<8 && w*h < mp*1e6*0.995;i++){
+  for(let i=0;i<8 && w*h < mp*1e6;i++){
     w+=step; h=Math.max(step, Math.round((w/r)/step)*step);
   }
   return [w,h];

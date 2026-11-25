@@ -18,6 +18,7 @@ import copy
 import csv
 import io
 import json
+import math
 import mimetypes
 import os
 import re
@@ -540,8 +541,10 @@ def ratio_to_size(aspect, mp):
     w = (mp * 1e6 * r) ** 0.5
     h = w / r
     step = 32
-    # 对齐到 multiple=32（先圆整再保证不小于 32、且仍能被 32 整除）
-    return max(step, int(round(w / step)) * step), max(step, int(round(h / step)) * step)
+    # 与前端一致：宽向上取到 32 的整数倍，高取最近的 32 倍数
+    w32 = max(step, math.ceil(w / step) * step)
+    h32 = max(step, round(h / step) * step)
+    return w32, h32
 
 
 # ============================ 数据存储 ============================

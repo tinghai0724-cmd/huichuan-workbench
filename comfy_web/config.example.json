@@ -8,5 +8,6 @@
   "only_favorites": true,
   "extra_workflows": ["minimax H3 首尾帧.json"],
   "video_workflows": ["minimax h3 图生视频.json", "MINIMax H3 文生视频.json", "minimax H3 首尾帧.json"],
+  "video_duration": { "min": 5, "max": 15, "presets": [5, 10, 15], "default": 5 },
   "cors": "*"
 }

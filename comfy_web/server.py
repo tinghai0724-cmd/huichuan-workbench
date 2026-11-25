@@ -78,6 +78,13 @@ DEFAULTS = {
     "video_workflows": [str(x) for x in (_CFG.get("video_workflows") or []) if str(x).strip()]
                        or ["minimax h3 图生视频.json", "MINIMax H3 文生视频.json",
                            "minimax H3 首尾帧.json"],
+    # 视频时长（秒）：MiniMax H3 这档模型给的可选档位，min/max 用于校验
+    "video_duration": (lambda d: {
+        "min": float(d.get("min", 5)), "max": float(d.get("max", 15)),
+        "step": float(d.get("step", 1)),
+        "default": float(d.get("default", 5)),
+        "presets": [float(x) for x in (d.get("presets") or [5, 10, 15])],
+    })(_CFG.get("video_duration") or {}),
 }
 
 DATA_DIR = os.path.join(HERE, "data")
@@ -85,12 +92,15 @@ RECORDS = os.path.join(DATA_DIR, "records.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(DEFAULTS["workflow_dir"], exist_ok=True)
 
-RATIOS = ["1:1 (Square)", "4:3 (Standard)", "3:2 (Photo)", "16:9 (Widescreen)",
-          "3:4 (Portrait Standard)", "2:3 (Portrait Photo)", "9:16 (Portrait Widescreen)"]
+RATIOS = ["2:3 (Portrait Photo)", "3:2 (Photo)", "3:4 (Portrait Standard)",
+          "4:3 (Standard)", "9:16 (Portrait Widescreen)", "16:9 (Widescreen)",
+          "21:9 (Ultrawide)"]
 
 SAMPLERS = {"KSampler", "KSamplerAdvanced", "SamplerCustom", "SamplerCustomAdvanced"}
 TEXT_KEYS = ("text", "value", "prompt", "string", "text_prompt", "positive_prompt")
 SIZE_FIRST = ("ResolutionSelector",)
+# 承载「视频时长（秒）」的值节点
+DURATION_SOURCES = ("PrimitiveFloat", "PrimitiveInt", "PrimitiveNumber", "Float", "INTConstant")
 
 _lock = threading.Lock()
 
@@ -261,6 +271,8 @@ class Registry:
                 "size_mode": c.get("size_mode", "none"),
                 "can_seed": bool(c.get("sampler")),
                 "can_lora": bool(c.get("loras")),
+                "can_duration": bool(c.get("duration")),
+                "duration_default": (c.get("duration") or {}).get("value"),
             })
         return out
 
@@ -393,6 +405,36 @@ def probe(p):
         if n["class_type"] in ("LoraLoaderModelOnly", "LoraLoader"):
             caps["loras"].append(nid)
 
+    # 时长（秒）：视频流程里通常是 PrimitiveFloat(秒) -> ComfyMathExpression -> length
+    consumers = {}
+    for nid, n in nodes.items():
+        for k, v in (n.get("inputs") or {}).items():
+            if isinstance(v, list) and len(v) == 2:
+                consumers.setdefault(str(v[0]), []).append((nid, k))
+    caps["duration"] = None
+    for nid, n in nodes.items():
+        if n["class_type"] not in DURATION_SOURCES:
+            continue
+        hit = None
+        for cid, ck in consumers.get(nid, []):
+            if ck in ("length", "duration", "seconds", "num_frames", "frames"):
+                hit = (cid, ck)
+                break
+            if nodes[cid]["class_type"] == "ComfyMathExpression":
+                for gid, gk in consumers.get(cid, []):
+                    if gk in ("length", "duration", "seconds", "num_frames", "frames"):
+                        hit = (gid, gk)
+                        break
+                if not hit:
+                    hit = (nid, "value")          # 仍然通过这个值节点生效
+                break
+        if hit:
+            title = ((n.get("_meta") or {}).get("title") or "")
+            caps["duration"] = {"node": nid,
+                                "value": n["inputs"].get("value"),
+                                "target": hit[0], "key": hit[1], "title": title}
+            break
+
     classes = {n["class_type"] for n in nodes.values()}
     if any("Video" in c or c.startswith("VHS_") for c in classes):
         caps["kind"] = "视频"
@@ -409,7 +451,7 @@ def probe(p):
 
 
 def apply_params(prompt, caps, *, text=None, image=None, images=None, aspect=None, megapixels=None,
-                 width=None, height=None, seed=None, lora=None, prefix="comfy_ui"):
+                 width=None, height=None, seed=None, lora=None, prefix="comfy_ui", duration=None):
     """按能力把参数写进 API prompt"""
     touched = []
 
@@ -466,6 +508,17 @@ def apply_params(prompt, caps, *, text=None, image=None, images=None, aspect=Non
             ins["noise_seed"] = int(seed)
             touched.append("seed")
 
+    # 视频时长（秒）：写值节点，ComfyMathExpression 会把它换算成帧数
+    if duration is not None and caps.get("duration"):
+        d = caps["duration"]
+        cfg = DEFAULTS.get("video_duration") or {}
+        sec = float(duration)
+        sec = max(float(cfg.get("min", 1)), min(float(cfg.get("max", 60)), sec))
+        node = prompt.get(d["node"])
+        if node is not None:
+            node["inputs"]["value"] = sec
+            touched.append("duration")
+
     if lora is not None and caps.get("loras"):
         for nid in caps["loras"]:
             prompt[nid]["inputs"]["strength_model"] = float(lora)
@@ -481,11 +534,13 @@ def apply_params(prompt, caps, *, text=None, image=None, images=None, aspect=Non
 def ratio_to_size(aspect, mp):
     ar = {"1:1 (Square)": 1.0, "4:3 (Standard)": 4 / 3, "3:2 (Photo)": 3 / 2,
           "16:9 (Widescreen)": 16 / 9, "3:4 (Portrait Standard)": 3 / 4,
-          "2:3 (Portrait Photo)": 2 / 3, "9:16 (Portrait Widescreen)": 9 / 16}
+          "2:3 (Portrait Photo)": 2 / 3, "9:16 (Portrait Widescreen)": 9 / 16,
+          "21:9 (Ultrawide)": 21 / 9}
     r = ar.get(aspect, 16 / 9)
     w = (mp * 1e6 * r) ** 0.5
     h = w / r
     step = 32
+    # 对齐到 multiple=32（先圆整再保证不小于 32、且仍能被 32 整除）
     return max(step, int(round(w / step)) * step), max(step, int(round(h / step)) * step)
 
 
@@ -1240,7 +1295,7 @@ def reconcile_stale():
 
 
 def submit_one(*, workflow, text, image=None, images=None, aspect, megapixels, width, height,
-               seed, lora, prefix, origin=None):
+               seed, lora, prefix, origin=None, duration=None):
     caps = REG.caps_of(workflow)
     if not caps.get("ok"):
         raise ComfyError(400, f"工作流不可用：{caps.get('error')}")
@@ -1248,7 +1303,7 @@ def submit_one(*, workflow, text, image=None, images=None, aspect, megapixels, w
     names = [x for x in (images or []) if x] or ([image] if image else [])
     apply_params(api, caps, text=text, image=image, images=names, aspect=aspect,
                  megapixels=megapixels, width=width, height=height, seed=seed, lora=lora,
-                 prefix=prefix)
+                 prefix=prefix, duration=duration)
     res = CLIENT.submit(api)
     if res.get("node_errors"):
         raise ComfyError(200, json.dumps(res["node_errors"], ensure_ascii=False))
@@ -1262,6 +1317,7 @@ def submit_one(*, workflow, text, image=None, images=None, aspect, megapixels, w
         "image_slots": slots_n, "image_bound": min(len(names), slots_n),
         "image_extra": max(0, len(names) - slots_n),
         "kind": ("视频" if caps.get("kind") == "视频" else ""),
+        "duration": (float(duration) if duration is not None else None),
     }
     STORE.add(item)
     threading.Thread(target=watch, args=(pid,), daemon=True).start()
@@ -1464,6 +1520,7 @@ class Handler(BaseHTTPRequestHandler):
                     "workflows": REG.summary() if REG.names else [],
                     "default_workflow": DEFAULTS["default_workflow"],
                     "video_workflows": vids,
+                    "video_duration": DEFAULTS.get("video_duration"),
                     "only_favorites": bool(DEFAULTS.get("only_favorites", True)),
                 })
 
@@ -1662,7 +1719,7 @@ class Handler(BaseHTTPRequestHandler):
                     image=p.get("image"), images=p.get("images"), aspect=p.get("aspect"),
                     megapixels=p.get("megapixels"), width=p.get("width"), height=p.get("height"),
                     seed=p.get("seed"), lora=p.get("lora"), prefix="comfy_ui",
-                    origin=self._origin())
+                    origin=self._origin(), duration=p.get("duration"))
                 it = next((i for i in STORE.items if i.get("prompt_id") == pid), {}) or {}
                 return self._json({"prompt_id": pid,
                                    "image_slots": it.get("image_slots", 0),
@@ -1682,7 +1739,8 @@ class Handler(BaseHTTPRequestHandler):
                             text=text, image=p.get("image"), images=p.get("images"), aspect=p.get("aspect"),
                             megapixels=p.get("megapixels"), width=p.get("width"),
                             height=p.get("height"), seed=p.get("seed"),
-                            lora=p.get("lora"), prefix="comfy_ui", origin=self._origin())
+                            lora=p.get("lora"), prefix="comfy_ui", origin=self._origin(),
+                            duration=p.get("duration"))
                         ids.append(pid)
                     except ComfyError as e:
                         errs.append(f"{text[:24]}… → {e}")
@@ -1697,7 +1755,9 @@ class Handler(BaseHTTPRequestHandler):
                     workflow=src.get("workflow") or DEFAULTS["default_workflow"],
                     text=src.get("prompt"), image=src.get("image"), aspect=src.get("aspect"),
                     megapixels=src.get("megapixels"), width=src.get("width"), height=src.get("height"),
-                    seed=p.get("seed"), lora=p.get("lora"), prefix="comfy_ui")
+                    seed=p.get("seed"), lora=p.get("lora"), prefix="comfy_ui",
+                    origin=self._origin(),
+                    duration=(p.get("duration") or src.get("duration")))
                 return self._json({"prompt_id": pid})
 
             if path == "/api/delete":

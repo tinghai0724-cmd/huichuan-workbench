@@ -295,7 +295,7 @@ def convert_ui_to_api(ui, object_info):
     nodes_by_id = {str(n["id"]): n for n in ui["nodes"]}
 
     def resolve(lid, depth=0):
-        """顺着 Reroute 找到真正的上游连线"""
+        """顺着 Reroute / 旁路节点找到真正的上游连线"""
         if lid is None or depth > 8:
             return None
         l = links.get(lid)
@@ -307,6 +307,20 @@ def convert_ui_to_api(ui, object_info):
                 if s.get("link") is not None:
                     return resolve(s["link"], depth + 1)
             return None
+        if origin:
+            mode = origin.get("mode", 0)
+            if mode == 2:            # 静音：下游拿不到东西
+                return None
+            if mode == 4:            # 旁路：把同类型输入透传给下游（ComfyUI 的旁路语义）
+                lt = l[5] if len(l) > 5 else None
+                for s in origin.get("inputs") or []:
+                    if s.get("link") is None:
+                        continue
+                    st = s.get("type")
+                    if lt and st and st != lt:
+                        continue
+                    return resolve(s["link"], depth + 1)
+                return None
         return l
 
     prompt = {}

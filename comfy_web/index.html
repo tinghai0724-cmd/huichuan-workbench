@@ -407,6 +407,24 @@
   .qslide input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:#dfe9ff;border:2px solid #2a6bd6;cursor:pointer}
   .qslide input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:#dfe9ff;border:2px solid #2a6bd6;cursor:pointer}
   .qslide .qs-val{font-size:12px;color:#cfdcff;min-width:54px;text-align:right;font-variant-numeric:tabular-nums}
+  .qslide .qs-val{min-width:118px;font-size:11.5px}
+  .qs-hint{display:none;margin-top:8px;font-size:11.5px;color:#8a8a93;line-height:1.5}
+  /* 画幅比例：可搜索下拉（对齐参考截图） */
+  .qratio-wrap{padding-right:8px}
+  .qratio-btn{display:inline-flex;align-items:center;gap:6px;background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding:0 2px}
+  .qratio-btn i{font-style:normal;color:#6f7683;font-size:10px}
+  .ratio-pop{position:fixed;z-index:400;width:230px;display:none;background:#171719;border:1px solid #2a2a2f;border-radius:12px;box-shadow:0 18px 44px rgba(0,0,0,.6);overflow:hidden}
+  .ratio-pop.show{display:block}
+  .rp-search{padding:8px;border-bottom:1px solid #242428}
+  .rp-search input{width:100%;height:30px;border-radius:8px;background:#101012;border:1px solid #2a2a2f;color:#dcdce3;font-size:12px;padding:0 9px;outline:none;font-family:inherit}
+  .rp-search input::placeholder{color:#6a6a74}
+  .rp-list{max-height:280px;overflow:auto;padding:6px}
+  .rp-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:8px;font-size:12.5px;color:#c8c8d2;cursor:pointer}
+  .rp-item:hover{background:#202024}
+  .rp-item b{font-weight:600;color:#e6e6ee}
+  .rp-item small{color:#7d7d88;font-size:11px}
+  .rp-item .rp-ck{color:#4f83e0;font-weight:700}
+  .rp-empty{padding:14px 10px;color:#6d6d78;font-size:12px;text-align:center}
   .qgen{height:38px;padding:0 22px;border-radius:11px;background:linear-gradient(135deg,#023a91,#1f5cc0);color:#fff;font-weight:700;font-size:13.5px;border:none;cursor:pointer;font-family:inherit;white-space:nowrap;transition:.15s}
   .qgen:hover{filter:brightness(1.12)}
   .qgen:disabled{opacity:.5;cursor:not-allowed;filter:none}
@@ -446,16 +464,7 @@
   .flow-tt{font-size:11.5px;color:#9aa4b8;letter-spacing:.05em;white-space:nowrap;flex:none}
   #flowFrame{flex:1;width:100%;border:0;background:#171718;min-height:0}
 
-  /* 光标动效：跟随光点 + 缓动光环 + 点击涟漪 */
-  .cur-dot,.cur-ring{position:fixed;left:0;top:0;pointer-events:none;border-radius:50%;z-index:120;opacity:0;will-change:transform}
-  .cur-dot{width:5px;height:5px;margin:-2.5px 0 0 -2.5px;background:#eaf1ff;box-shadow:0 0 10px rgba(130,180,255,.9);transition:opacity .25s}
-  .cur-ring{width:26px;height:26px;margin:-13px 0 0 -13px;border:1.5px solid rgba(110,160,255,.55);
-    transition:width .18s ease,height .18s ease,margin .18s ease,border-color .18s ease,background .18s ease,opacity .25s}
-  body.cur-hot .cur-ring{width:40px;height:40px;margin:-20px 0 0 -20px;border-color:rgba(150,195,255,.95);background:rgba(79,131,224,.12)}
-  body.cur-down .cur-ring{width:17px;height:17px;margin:-8.5px 0 0 -8.5px;border-color:rgba(205,225,255,1)}
-  .cur-ripple{position:fixed;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;
-    border:1.5px solid rgba(140,190,255,.85);pointer-events:none;z-index:121;animation:rippleOut .55s ease-out forwards}
-  @keyframes rippleOut{from{opacity:.9;transform:scale(.6)}to{opacity:0;transform:scale(5.5)}}
+  /* 自定义光标/光环/涟漪样式已全部移除，使用系统光标 */
 
   /* 视图切换缓动 */
   @keyframes viewIn{from{opacity:.25;transform:translateY(10px) scale(.992)}to{opacity:1;transform:none}}
@@ -804,18 +813,26 @@
             <span class="ic">✦</span>
             <select id="homeWf" onchange="setWfFrom(this.value)"></select>
           </div>
-          <div class="qpill" title="生成尺寸比例">
+          <div class="qpill qratio-wrap" id="homeRatioWrap" title="画幅比例">
             <span class="ic">▭</span>
-            <select id="homeRatio" onchange="setRatioFrom(this.value)"></select>
+            <button type="button" class="qratio-btn" id="homeRatioBtn" onclick="openRatioPicker(this)">
+              <span id="homeRatioText">16:9</span><i>▾</i>
+            </button>
+          </div>
+          <div class="qpill qdur" id="homeDurWrap" style="display:none" title="视频时长（秒，MiniMax H3）">
+            <span class="ic">⏱</span>
+            <span id="homeDurNote" style="display:none">时长固定</span>
+            <select id="homeDur" onchange="setDurationFrom(this.value)"></select>
           </div>
           <div class="grow"></div>
           <button class="qgen" id="homeGen" onclick="homeGenerate()">✦ 生成</button>
         </div>
         <div class="qslide">
           <span class="qs-ic">◲</span>
-          <input type="range" id="homeMp" min="0" max="5" step="1" value="2" oninput="onHomeMp(this.value)" title="生成像素大小">
-          <span class="qs-val" id="homeMpText">2.0 MP</span>
+          <input type="range" id="homeMp" min="0" max="13" step="1" value="9" oninput="onHomeMp(this.value)" title="生成像素大小">
+          <span class="qs-val" id="homeMpText">1.0 MP · 1344 × 768</span>
         </div>
+        <div class="qs-hint" id="homeSizeHint" style="display:none"></div>
       </div>
       <input type="file" id="homeFileInput" accept="image/*" multiple style="display:none">
       <div class="home-tip" id="homeTip">按 Enter 直接提交 · Shift+Enter 换行</div>
@@ -864,18 +881,26 @@
             <span class="ic">✦</span>
             <select id="gcWf" onchange="setWfFrom(this.value)"></select>
           </div>
-          <div class="qpill" title="生成尺寸比例">
+          <div class="qpill qratio-wrap" id="gcRatioWrap" title="画幅比例">
             <span class="ic">▭</span>
-            <select id="gcRatio" onchange="setRatioFrom(this.value)"></select>
+            <button type="button" class="qratio-btn" id="gcRatioBtn" onclick="openRatioPicker(this)">
+              <span id="gcRatioText">16:9</span><i>▾</i>
+            </button>
+          </div>
+          <div class="qpill qdur" id="gcDurWrap" style="display:none" title="视频时长（秒，MiniMax H3）">
+            <span class="ic">⏱</span>
+            <span id="gcDurNote" style="display:none">时长固定</span>
+            <select id="gcDur" onchange="setDurationFrom(this.value)"></select>
           </div>
           <div class="grow"></div>
           <button class="qgen" id="gcGen" onclick="genGenerate()">✦ 生成</button>
         </div>
         <div class="qslide">
           <span class="qs-ic">◲</span>
-          <input type="range" id="gcMp" min="0" max="5" step="1" value="2" oninput="onHomeMp(this.value)" title="生成像素大小">
-          <span class="qs-val" id="gcMpText">2.0 MP</span>
+          <input type="range" id="gcMp" min="0" max="13" step="1" value="9" oninput="onHomeMp(this.value)" title="生成像素大小">
+          <span class="qs-val" id="gcMpText">1.0 MP · 1344 × 768</span>
         </div>
+        <div class="qs-hint" id="gcSizeHint" style="display:none"></div>
       </div>
     </div>
   </div>
@@ -1027,7 +1052,7 @@
 
     <div class="field" id="mpField">
       <label>画质像素：<span id="mpLabel" style="color:var(--text)">2.0 MP</span></label>
-      <input type="range" class="range" id="mp" min="1" max="4" step="0.5" value="2" oninput="syncMpLabel()">
+      <input type="range" class="range" id="mp" min="0.2" max="2" step="0.1" value="1" oninput="syncMpLabel()">
       <div class="tip">模型按 2048×2048 面积调优；16G 显存建议 2–4 MP。</div>
     </div>
 
@@ -1070,6 +1095,12 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- 画幅比例：可搜索下拉面板 -->
+<div class="ratio-pop" id="ratioPop">
+  <div class="rp-search"><input id="ratioSearch" placeholder="搜索比例，如 16:9" oninput="renderRatioList(this.value)"></div>
+  <div class="rp-list" id="ratioList"></div>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -1124,12 +1155,15 @@ window.fetch = function(u,opt){
   if(cross) opt.credentials = 'include';
   return _nativeFetch(url, opt);
 };
+// 画幅比例：按参考截图给的 7 项（去掉 1:1，新增 21:9）
 const RATIOS = [
-  ['1:1 (Square)','1:1'],['4:3 (Standard)','4:3'],['3:2 (Photo)','3:2'],
-  ['16:9 (Widescreen)','16:9'],['3:4 (Portrait Standard)','3:4'],
-  ['2:3 (Portrait Photo)','2:3'],['9:16 (Portrait Widescreen)','9:16']
+  ['2:3 (Portrait Photo)','2:3'],['3:2 (Photo)','3:2'],
+  ['3:4 (Portrait Standard)','3:4'],['4:3 (Standard)','4:3'],
+  ['9:16 (Portrait Widescreen)','9:16'],['16:9 (Widescreen)','16:9'],
+  ['21:9 (Ultrawide)','21:9']
 ];
-const MP_STEPS=[1,1.5,2,2.5,3,4];
+// 像素档位：对齐参考截图的 14 档（multiple = 32）
+const MP_STEPS=[0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.98,1.0,1.2,1.5,1.8,2.0];
 let STATE={items:[],jobs:{},workflows:[],default_workflow:''};
 let filter='all', ratioFilter='all', mode='single', current=null, pollTimer=null;
 // 参考图：最多 5 张，refImages 存 ComfyUI input 里的文件名，refUrls 存本地预览用的 objectURL
@@ -1150,20 +1184,49 @@ RATIOS.forEach(([val,label])=>{
   ratioRow.appendChild(b);
 });
 
-// 比例下拉（首页 / 生成页）
+// 比例下拉（首页 / 生成页）：自绘可搜索面板，选中项打勾
+const ratioShort=v=>(v||'').split(' ')[0];
+function ratioName(v){ const m=/\(([^)]*)\)/.exec(v||''); return m? m[1] : ''; }
 function fillRatioSelects(){
-  ['homeRatio','gcRatio'].forEach(id=>{
-    const el=$(id); if(!el) return;
-    if(!el.options.length){
-      el.innerHTML = RATIOS.map(([val,label])=>`<option value="${val}">${label}</option>`).join('');
-    }
-    el.value = curRatio;
-  });
+  const txt = ratioShort(curRatio)||'自动';
+  ['homeRatioText','gcRatioText'].forEach(id=>{ const el=$(id); if(el) el.textContent=txt; });
+  [...ratioRow.children].forEach(c=>c.classList.toggle('on', c.dataset.v===curRatio));
 }
+function renderRatioList(q){
+  const box=$('ratioList'); if(!box) return;
+  const kw=(q||'').trim().toLowerCase();
+  const rows=RATIOS.filter(([v,l])=> !kw || v.toLowerCase().includes(kw) || l.includes(kw));
+  if(!rows.length){ box.innerHTML='<div class="rp-empty">没有匹配的比例</div>'; return; }
+  box.innerHTML=rows.map(([v,l])=>{
+    const on = (v===curRatio);
+    return `<div class="rp-item" onclick="pickRatio('${v}')">
+      <span><b>${l}</b> <small>${ratioName(v)}</small></span>
+      <span class="rp-ck">${on?'✓':''}</span></div>`;
+  }).join('');
+}
+function openRatioPicker(btn){
+  const pop=$('ratioPop'); if(!pop) return;
+  if(pop.classList.contains('show')){ closeRatioPicker(); return; }
+  if(!btn) btn=$('homeRatioBtn');
+  const r=btn.getBoundingClientRect();
+  pop.classList.add('show');
+  const w=pop.offsetWidth||230, h=pop.offsetHeight||200;
+  let left=r.left, top=r.bottom+6;
+  if(left+w>innerWidth-8) left=Math.max(8, innerWidth-w-8);
+  if(top+h>innerHeight-8) top=Math.max(8, r.top-h-6);
+  pop.style.left=left+'px'; pop.style.top=top+'px';
+  const s=$('ratioSearch'); if(s){ s.value=''; renderRatioList(''); setTimeout(()=>s.focus(),30); }
+}
+function closeRatioPicker(){ const p=$('ratioPop'); if(p) p.classList.remove('show'); }
+function pickRatio(v){ setRatioFrom(v); closeRatioPicker(); }
+document.addEventListener('click', e=>{
+  const p=$('ratioPop');
+  if(p && p.classList.contains('show') && !e.target.closest('#ratioPop') && !e.target.closest('.qratio-wrap')) closeRatioPicker();
+});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeRatioPicker(); });
 fillRatioSelects();
 
 function toast(msg,isErr){const t=$('toast');t.textContent=msg;t.classList.toggle('err',!!isErr);t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2800)}
-const ratioShort=v=>(v||'').split(' ')[0];
 function fmtTime(ts){const d=new Date(ts*1000),diff=Date.now()/1000-ts;
   if(diff<60)return '刚刚'; if(diff<3600)return Math.floor(diff/60)+' 分钟前';
   if(diff<86400)return Math.floor(diff/3600)+' 小时前';
@@ -1278,7 +1341,8 @@ async function load(){
   if(OUT_MODE==='video'){
     const vids=modeWfs().filter(w=>w.ok).map(w=>w.name);
     if(vids.length && vids.indexOf(WF_NAME)<0) WF_NAME=vids[0];
-  }else if(WF_NAME && !capsOf(WF_NAME).name && STATE.default_workflow){
+  }else if(WF_NAME && (!capsOf(WF_NAME).name || isVideoWf(WF_NAME)) && STATE.default_workflow){
+    // 图像模式不列视频流程：当前若是视频流程就换回默认图像流程
     WF_NAME=STATE.default_workflow;
   }
   if(!WF_NAME) WF_NAME = localStorage.getItem('wf') || STATE.default_workflow || '';
@@ -1298,9 +1362,10 @@ function videoWfList(){
 function isVideoWf(n){ return videoWfList().indexOf(n)>=0; }
 function modeWfs(){
   const all=(STATE&&STATE.workflows)||[];
-  if(OUT_MODE!=='video') return all;
   const names=videoWfList();
-  return all.filter(w=>names.indexOf(w.name)>=0);
+  if(OUT_MODE==='video') return all.filter(w=>names.indexOf(w.name)>=0);
+  // 图像模式：视频类流程一律不列（避免误选）
+  return all.filter(w=>names.indexOf(w.name)<0 && !(w.kind==='视频'));
 }
 
 function renderWorkflowSelect(){
@@ -1337,6 +1402,49 @@ function setWfFrom(name){
 
 function capsOf(name){return STATE.workflows.find(w=>w.name===name)||{}}
 
+/* ---------- 视频时长（秒） ---------- */
+// 档位由 MiniMax H3 决定（后端 video_duration 配置，默认 5/10/15 秒）
+function durCfg(){
+  const cfg=(STATE&&STATE.video_duration)||{};
+  const presets=(cfg.presets&&cfg.presets.length)?cfg.presets.slice():[5,10,15];
+  return {min:(cfg.min!=null?+cfg.min:5), max:(cfg.max!=null?+cfg.max:15), presets};
+}
+let curDuration=null, durForWf='';
+function syncDurUI(){
+  const c=capsOf(WF_NAME);
+  const vid=(OUT_MODE==='video');
+  const supported = vid && !!c.can_duration;
+  ['homeDurWrap','gcDurWrap'].forEach(id=>{ const el=$(id); if(el) el.style.display = vid?'inline-flex':'none'; });
+  ['homeDur','gcDur'].forEach(id=>{ const el=$(id); if(el) el.style.display = supported?'':'none'; });
+  ['homeDurNote','gcDurNote'].forEach(id=>{ const el=$(id); if(el) el.style.display = (vid&&!supported)?'':'none'; });
+  if(!supported) return;
+  if(durForWf!==WF_NAME){                       // 换流程就回到它自己的工作流默认秒数
+    const dv=(c.duration_default!=null)? +c.duration_default : durCfg().presets[0];
+    curDuration=dv; durForWf=WF_NAME;
+  }
+  fillDurOptions();
+  ['homeDur','gcDur'].forEach(id=>{ const el=$(id); if(el) el.value=String(curDuration); });
+}
+function fillDurOptions(){
+  const cfg=durCfg();
+  const html=cfg.presets.map(s=>`<option value="${s}">${(+s).toFixed(0)} 秒</option>`).join('');
+  ['homeDur','gcDur'].forEach(id=>{
+    const el=$(id); if(!el) return;
+    if(el.innerHTML!==html) el.innerHTML=html;
+    const c=capsOf(WF_NAME);
+    el.title=`可选 ${cfg.presets.map(s=>(+s).toFixed(0)).join(' / ')} 秒（${Math.round(cfg.min)}–${Math.round(cfg.max)} 秒，受 MiniMax H3 限制）`;
+  });
+}
+function setDurationFrom(v){
+  const cfg=durCfg();
+  let s=+v;
+  if(!s) return;
+  s=Math.max(cfg.min, Math.min(cfg.max, s));
+  curDuration=s;
+  ['homeDur','gcDur'].forEach(id=>{ const el=$(id); if(el) el.value=String(s); });
+  toast(`视频时长 ${s.toFixed(0)} 秒`);
+}
+
 /* ---------- 图像 / 视频 模式 ---------- */
 function applyModeUI(light){
   document.body.classList.toggle('vmode', OUT_MODE==='video');
@@ -1356,6 +1464,8 @@ function applyModeUI(light){
   if(!light) renderWorkflowSelect();
   renderHomeWfChips();
   updateHomeRef();
+  syncDurUI();
+  syncSizeUI();
 }
 function setOutMode(m){
   m = (m==='video') ? 'video' : 'image';
@@ -1364,6 +1474,12 @@ function setOutMode(m){
   try{ localStorage.setItem('cw_out_mode', m); }catch(e){}
   const vids=modeWfs().filter(w=>w.ok).map(w=>w.name);
   if(m==='video' && vids.length && vids.indexOf(WF_NAME)<0){ WF_NAME=vids[0]; }
+  // 回图像模式时，如果当前是视频流程就换回默认图像流程
+  if(m!=='video' && isVideoWf(WF_NAME)){
+    const imgs=modeWfs().filter(w=>w.ok).map(w=>w.name);
+    const def=STATE.default_workflow;
+    WF_NAME = (def && imgs.indexOf(def)>=0) ? def : (imgs[0]||'');
+  }
   // 灵感广场跟着切筛选：视频模式只看视频作品
   homeKind = (m==='video') ? '视频' : '全部';
   [...document.querySelectorAll('.filters .chip')].forEach(c=>{
@@ -1402,6 +1518,8 @@ function onWorkflowChange(silent){
   $('loraField').style.display = c.can_lora ? '' : 'none';
   ['homeWf','drawerWf'].forEach(id=>{ const el=$(id); if(el && el.value!==WF_NAME) el.value=WF_NAME; });
   if(typeof syncHomeWfUI==='function') syncHomeWfUI();
+  if(typeof syncDurUI==='function') syncDurUI();
+  if(typeof syncSizeUI==='function') syncSizeUI();
   if(!silent) toast('已切到 · '+(c.label||WF_NAME));
 }
 
@@ -1560,14 +1678,10 @@ function applyViewMode(){
 
 // ---------- 首页 / 导航 ----------
 function updateQuickEst(){
-  const mp=($('mp')&&$('mp').value)||'2';
-  const r=(typeof curRatio==='string'&&curRatio)?curRatio.split(' ')[0]:'自动';
-  const mpTxt=`${(+mp).toFixed(1)} MP`;
-  if($('homeMpText')) $('homeMpText').textContent = mpTxt;
-  if($('gcMpText')) $('gcMpText').textContent = mpTxt;
-  // 滑块档位跟抽屉里的 #mp 对齐
-  const idx=MP_STEPS.indexOf(+mp);
-  ['homeMp','gcMp'].forEach(id=>{ const el=$(id); if(el && idx>=0 && +el.value!==idx) el.value=idx; });
+  const mp=($('mp')&&$('mp').value)||'1';
+  const txt=mpLabelText(mp);
+  if($('homeMpText')) $('homeMpText').textContent = txt;
+  if($('gcMpText')) $('gcMpText').textContent = txt;
 }
 function quickGen(){
   const t=(($('homePrompt')&&$('homePrompt').value)||'').trim();
@@ -1801,42 +1915,8 @@ function animView(el){
   el.addEventListener('animationend',()=>el.classList.remove('view-anim'),{once:true});
 }
 
-function initCursorFX(){
-  if(window.__curFx) return;
-  window.__curFx=1;
-  const fine = window.matchMedia('(hover:hover) and (pointer:fine)').matches;
-  if(!fine) return;
-  const dot=document.createElement('div'); dot.className='cur-dot';
-  const ring=document.createElement('div'); ring.className='cur-ring';
-  document.body.appendChild(ring); document.body.appendChild(dot);
-  let mx=-100, my=-100, rx=-100, ry=-100, shown=false, raf=0;
-  const HOT='a,button,select,input,textarea,label,.nav-item,.card,.chip,.qpill,.wf-chip,.tab,.gi-media img,.hero,.li';
-  const draw=()=>{
-    dot.style.transform=`translate3d(${mx}px,${my}px,0) translate(-50%,-50%)`;
-    rx+=(mx-rx)*0.18; ry+=(my-ry)*0.18;
-    ring.style.transform=`translate3d(${rx}px,${ry}px,0) translate(-50%,-50%)`;
-    raf=requestAnimationFrame(draw);
-  };
-  const onMove=e=>{
-    mx=e.clientX; my=e.clientY;
-    if(!shown){ shown=true; rx=mx; ry=my; dot.style.opacity=1; ring.style.opacity=1;
-      if(!raf) draw(); }
-    const hot = e.target && e.target.closest && e.target.closest(HOT);
-    document.body.classList.toggle('cur-hot', !!hot);
-  };
-  document.addEventListener('pointermove', onMove, {passive:true});
-  document.addEventListener('pointerdown', e=>{
-    document.body.classList.add('cur-down');
-    // 点击涟漪：跳转/点击都有一点反馈
-    const rp=document.createElement('div');
-    rp.className='cur-ripple';
-    rp.style.left=e.clientX+'px'; rp.style.top=e.clientY+'px';
-    document.body.appendChild(rp);
-    setTimeout(()=>rp.remove(),600);
-  });
-  document.addEventListener('pointerup', ()=>document.body.classList.remove('cur-down'));
-  document.addEventListener('pointerleave', ()=>{ dot.style.opacity=0; ring.style.opacity=0; });
-}
+/* 自定义光标（蓝色圆环 + 白点）已下线，恢复系统默认光标 */
+function initCursorFX(){ window.__curFx=1; }
 
 /* ---------- 工作流控制页（内嵌原版 ComfyUI） ---------- */
 function comfyBase(){ return (STATE && STATE.server) ? STATE.server.replace(/\/$/,'') : 'http://127.0.0.1:8188'; }
@@ -1991,40 +2071,84 @@ function syncHomeWfUI(){
   if(typeof syncGenUI==='function') syncGenUI();
 }
 
-/* 像素滑块：0..5 的档位映射到 MP_STEPS，滑块和抽屉里的 #mp 保持同步 */function syncMpEverywhere(){
-  const mpVal = +($('mp').value||2);
-  let idx = MP_STEPS.indexOf(mpVal);
-  if(idx<0){                              // 抽屉能拖到非档位值，滑块显示最近的档
-    idx = MP_STEPS.reduce((best,v,i)=>Math.abs(v-mpVal)<Math.abs(MP_STEPS[best]-mpVal)?i:best,0);
+/* 像素档位：MP_STEPS 14 档（0.2–2.0），输出像素按 multiple=32 反算，标签同时显示 MP 与实际像素 */
+function arOf(aspect){
+  const s=ratioShort(aspect||curRatio)||'16:9';
+  const [a,b]=s.split(':').map(Number);
+  return (a&&b)? a/b : 16/9;
+}
+function mpToPx(aspect, mp){
+  const r=arOf(aspect), step=32;
+  let w=Math.max(step, Math.round(Math.sqrt(mp*1e6*r)/step)*step);
+  let h=Math.max(step, Math.round((w/r)/step)*step);
+  // 面积没到目标就往上补一档，避免低于标称像素
+  for(let i=0;i<8 && w*h < mp*1e6*0.995;i++){
+    w+=step; h=Math.max(step, Math.round((w/r)/step)*step);
   }
+  return [w,h];
+}
+function mpNum(mp){
+  const v=Math.round((+mp||1)*100)/100;
+  return (v%1===0) ? v.toFixed(1) : String(v);
+}
+function mpLabelText(mp){
+  const [w,h]=mpToPx(curRatio, +mp||1);
+  return `${mpNum(mp)} MP · ${w} × ${h}`;
+}
+function nearestMpIdx(v){
+  const mp=+v||1;
+  const idx=MP_STEPS.indexOf(mp);
+  if(idx>=0) return idx;
+  return MP_STEPS.reduce((best,x,i)=>Math.abs(x-mp)<Math.abs(MP_STEPS[best]-mp)?i:best,0);
+}
+function syncMpEverywhere(){
+  const mpVal = +(($('mp')&&$('mp').value)||1);
+  const idx = nearestMpIdx(mpVal);
   ['homeMp','gcMp'].forEach(id=>{ const el=$(id); if(el && +el.value!==idx) el.value=idx; });
-  ['homeMpText','gcMpText'].forEach(id=>{ const el=$(id); if(el) el.textContent=mpVal.toFixed(1)+' MP'; });
-  if($('mpLabel')) $('mpLabel').textContent=mpVal.toFixed(1)+' MP';
+  ['homeMpText','gcMpText'].forEach(id=>{ const el=$(id); if(el) el.textContent=mpLabelText(mpVal); });
+  if($('mpLabel')) $('mpLabel').textContent=mpLabelText(mpVal);
   updateQuickEst();
+  if(typeof syncSizeUI==='function') syncSizeUI();
 }
 function onHomeMp(idx){
-  const v = MP_STEPS[+idx] ?? 2;
+  const v = MP_STEPS[+idx] ?? 1;
   $('mp').value = v;
   ['homeMp','gcMp'].forEach(id=>{ const el=$(id); if(el) el.value=+idx; });
   syncMpEverywhere();
 }
-function cycleMp(){                       // 仍保留给旧入口调用
-  const cur=+($('mp').value||2);
-  const next=MP_STEPS[(MP_STEPS.indexOf(cur)+1)%MP_STEPS.length] ?? MP_STEPS[1];
+function cycleMp(){
+  const cur=+($('mp').value||1);
+  const next=MP_STEPS[(nearestMpIdx(cur)+1)%MP_STEPS.length] ?? MP_STEPS[9];
   $('mp').value=next; syncMpEverywhere();
-  toast(`像素 ${next.toFixed(1)} MP`);
+  toast(`像素 ${mpLabelText(next)}`);
 }
 function setRatioFrom(v){
   if(!v) return;
   curRatio=v;
-  [...ratioRow.children].forEach(c=>c.classList.toggle('on', c.dataset.v===v));
-  ['homeRatio','gcRatio'].forEach(id=>{ const el=$(id); if(el && el.value!==v) el.value=v; });
+  fillRatioSelects();
+  syncMpEverywhere();
   updateQuickEst();
 }
 function cycleRatio(){
   const idx=RATIOS.findIndex(r=>r[0]===curRatio);
   setRatioFrom(RATIOS[(idx+1)%RATIOS.length][0]);
   toast('画幅 '+ratioShort(curRatio));
+}
+
+/* 当前流程是否支持调节画幅 / 像素；不支持就在控件下面给提示，并把控件置灰 */
+function sizeSupported(){ const c=capsOf(WF_NAME); return (c&&c.size_mode&&c.size_mode!=='none'); }
+function syncSizeUI(){
+  if(!WF_NAME){ return; }
+  const ok = sizeSupported();
+  const msg = ok ? '' : `「${shortWf(WF_NAME)}」这张工作流的尺寸是固定的，画幅比例和像素大小都不支持调节`;
+  ['homeRatioWrap','gcRatioWrap'].forEach(id=>{ const el=$(id); if(el) el.classList.toggle('off', !ok); });
+  ['homeMp','gcMp'].forEach(id=>{ const el=$(id); if(el) el.disabled=!ok; });
+  ['homeMpText','gcMpText'].forEach(id=>{ const el=$(id); if(el) el.style.opacity = ok?'':'0.45'; });
+  ['homeSizeHint','gcSizeHint'].forEach(id=>{
+    const el=$(id); if(!el) return;
+    el.textContent = msg;
+    el.style.display = ok ? 'none' : 'block';
+  });
 }
 function homePickRef(){
   const c=capsOf(WF_NAME);
@@ -2135,7 +2259,7 @@ async function homeGenerate(){
   btn.disabled=true; const old=btn.textContent; btn.textContent='提交中…';
   const payload={...payloadBase(), prompt:t};
   // 一开始生成，首页立即切换为生成过程页
-  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:+$('mp').value, image:refImages[0]||null, images:refImages.slice(), video:(OUT_MODE==='video')};
+  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:+$('mp').value, duration:payload.duration, image:refImages[0]||null, images:refImages.slice(), video:(OUT_MODE==='video')};
   genPid=null;
   $('homePrompt').value='';
   openGenView();
@@ -2190,7 +2314,7 @@ function genItemHtml(it){
     <div class="gi-meta">
       <span class="st ${st==='error'?'err':(st==='done'?'done':'')}">${stTxt}</span>
       <span class="tm">${fmtTime(it.created||0)}</span>
-      <span>${it.kind==='视频'?'🎬 ':''}${escapeHtml((it.workflow||'').replace('.json',''))}${mp?' · '+mp:''}${it.aspect?' · '+ratioShort(it.aspect):''}${it.origin?' · '+escapeHtml(it.origin):''}</span>
+      <span>${it.kind==='视频'?'🎬 ':''}${escapeHtml((it.workflow||'').replace('.json',''))}${mp?' · '+mp:''}${it.aspect?' · '+ratioShort(it.aspect):''}${it.duration?' · '+(+it.duration).toFixed(0)+'s':''}${it.origin?' · '+escapeHtml(it.origin):''}</span>
     </div>
     <div class="gi-bar"><i></i></div>
   </div>`;
@@ -2201,7 +2325,7 @@ function genPendingHtml(){
   return `<div class="gi queued pending" data-pid="__pending">
     <div class="gi-prompt">${escapeHtml(p.prompt)}</div>
     <div class="gi-media" style="aspect-ratio:${ar}"><div class="gen-blobs"></div><div class="gi-badge">提交中…</div></div>
-    <div class="gi-meta"><span class="st">提交中</span><span>${escapeHtml((p.workflow||'').replace('.json',''))}${p.megapixels?' · '+(+p.megapixels).toFixed(1)+' MP':''}</span></div>
+    <div class="gi-meta"><span class="st">提交中</span><span>${escapeHtml((p.workflow||'').replace('.json',''))}${p.megapixels?' · '+(+p.megapixels).toFixed(1)+' MP':''}${p.duration?' · '+(+p.duration).toFixed(0)+'s':''}</span></div>
     <div class="gi-bar"><i></i></div>
   </div>`;
 }
@@ -2220,9 +2344,11 @@ function renderThread(fresh){
 function syncGenUI(){
   const sel=$('gcWf');
   if(sel && [...sel.options].some(o=>o.value===WF_NAME) && sel.value!==WF_NAME) sel.value=WF_NAME;
-  if($('gcRatio')) { if($('gcRatio').value!==curRatio) $('gcRatio').value=curRatio; }
+  fillRatioSelects();
   syncMpEverywhere();
   updateHomeRef();
+  if(typeof syncDurUI==='function') syncDurUI();
+  if(typeof syncSizeUI==='function') syncSizeUI();
 }
 
 function openGenView(pid){
@@ -2314,7 +2440,7 @@ async function genGenerate(){
   const btn=$('gcGen'); if(btn.disabled) return;
   btn.disabled=true; const old=btn.textContent; btn.textContent='提交中…';
   const payload={...payloadBase(), prompt:t};
-  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:+$('mp').value, image:refImages[0]||null, images:refImages.slice()};
+  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:+$('mp').value, duration:payload.duration, image:refImages[0]||null, images:refImages.slice()};
   genPid=null;
   renderThread(true);
   try{
@@ -2425,7 +2551,8 @@ function payloadBase(){
     seed: $('seed').value.trim() || null,
     image: refImages[0]||null,
     images: refImages.slice(),
-    lora: $('lora').value.trim() || null
+    lora: $('lora').value.trim() || null,
+    duration: (OUT_MODE==='video' && c.can_duration && curDuration) ? curDuration : null
   };
 }
 

@@ -105,7 +105,8 @@ pwsh tools/publish.ps1 -Repo tinghai0724-cmd/huichuan-workbench -Message "首页
 - 只加载 ComfyUI 里**打了书签（星标）**的工作流：读 `userdata/workflows/.index.json` 的 `favorites`；`only_favorites: false` 可关掉（或环境变量 `CW_ONLY_FAVORITES=0`）改成全量。改完书签点 `POST /api/refresh-workflows` 即时重载，不用重启；书签里的流程若缺插件会单独标记为不可用，不影响其它流程。
 - 工作流内容**以 ComfyUI 上保存的版本为准**（`sync_from_comfy: true`，默认开）：每次启动 / 刷新都会把 `userdata/workflows/*.json` 拉到本地 `comfy_wf/`，内容有变就覆盖并重新探测。所以你在 ComfyUI 里改了节点（比如把 Sage Attention Patch 换成 `ModelAttentionBackend`）、存了盘，这边刷新一下就跟着更新。配成 `false` 则只用本地副本。
 - `node_swaps` 可做节点替换：把跑不起来的节点换成语义等价的实现（默认 `MiniMaxH3MemoryEfficientSageAttentionPatch → MiniMaxLowVRAMAttention`，新节点缺的必填参数用 `object_info` 的默认值补齐）；配成 `{}` 关掉。
-- 「共享」页不再自己画文件列表，直接把 `share_server` 上那套原生界面（FileShare Pro）用 iframe 嵌进来：头部只留一行状态（地址 / 文件数 / 连接）和「↻ 刷新」「⇗ 新窗口」按钮；共享地址取 `/api/state` 的 `share_server`，没配就按当前主机名 + `:8080` 兜底。资产库大图里的「⇪ 分享到局域网共享」仍走 `/api/share/push`，两边看到的是同一批文件。
+- 「共享」页不再自己画文件列表，直接把 `share_server` 上那套原生界面（FileShare Pro）用 iframe 嵌进来：头部只留一行状态（地址 / 文件数 / 连接）和「＋ 分享作品」「↻ 刷新」「⇗ 新窗口」按钮；共享地址取 `/api/state` 的 `share_server`，没配就按当前主机名 + `:8080` 兜底。
+- 「＋ 分享作品」打开资产库多选弹层：只列已完成的作品（图 / 视频都带缩略图），可勾选、全选、清空，点「⇪ 分享所选」走 `POST /api/share/push-batch` 批量推到共享盘，成功后自动刷新 iframe 里的列表。资产库大图里的「⇪ 分享到局域网共享」仍是单张快分享（`/api/share/push`）。
 - 「文档」放词表/文案：xlsx、csv、tsv、txt、md、json、docx 解析成行，按行搜索、复制或一键填进生成对话框；pdf/doc/xls 只存原文不解析
 - 首页 / 生成页有 **图像 / 视频** 模式开关：图像模式只列图像类流程（视频流程全部隐藏），视频模式只列 `video_workflows` 里的流程（默认 `minimax h3 图生视频`、`MINIMax H3 文生视频`、`minimax H3 首尾帧`），整站换成彩色主题——主按钮走 `紫→青→粉→橙` 渐变动画，首页铺一层低透明度动态彩色光斑
 - 视频模式下多一个「⏱ 时长」参数：档位由 `video_duration` 配置（默认 `5 / 10 / 15` 秒，受 MiniMax H3 限制），写进流程里 `PrimitiveFloat(秒)` 节点，后面的 `ComfyMathExpression` 负责折算成帧并对齐 17 帧音频块；流程没有时长节点时显示「时长固定」

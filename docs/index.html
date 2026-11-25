@@ -162,6 +162,24 @@
   .sv-frame{display:block;width:100%;height:100%;border:0;background:#0b1020}
   .sv-frame-mask{position:absolute;inset:0;display:grid;place-items:center;font-size:12.5px;color:var(--dim);background:#0b1020;transition:opacity .25s}
   .sv-frame-mask.hide{opacity:0;pointer-events:none}
+  /* 资产库作品分享弹层 */
+  .lib-mask{position:fixed;inset:0;z-index:60;display:none;place-items:center;padding:22px;background:rgba(0,0,0,.62);backdrop-filter:blur(2px)}
+  .lib-mask.show{display:grid}
+  .lib-panel{width:min(1080px,96vw);max-height:88vh;display:flex;flex-direction:column;background:var(--panel);border:1px solid #33333d;border-radius:16px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+  .lib-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)}
+  .lib-body{flex:1;min-height:0;overflow-y:auto;padding:14px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;align-content:start}
+  .lib-body::-webkit-scrollbar{width:9px}
+  .lib-body::-webkit-scrollbar-thumb{background:#26262d;border-radius:9px}
+  .lib-item{position:relative;border:1px solid #2a2a33;border-radius:11px;overflow:hidden;cursor:pointer;background:#101013;transition:border-color .15s,transform .15s}
+  .lib-item:hover{border-color:#3d5a94;transform:translateY(-1px)}
+  .lib-item.on{border-color:#5b8cff;box-shadow:0 0 0 2px rgba(91,140,255,.35) inset}
+  .lib-item .lb-img{width:100%;aspect-ratio:1/1;object-fit:cover;display:block;background:#0c0c10}
+  .lib-item .lb-meta{padding:6px 8px;font-size:11px;color:var(--dim);display:flex;flex-direction:column;gap:2px}
+  .lib-item .lb-meta b{color:var(--text);font-weight:500;font-size:11.5px}
+  .lib-item .lb-ck{position:absolute;top:7px;right:7px;width:19px;height:19px;border-radius:50%;display:grid;place-items:center;font-size:11px;background:rgba(0,0,0,.55);border:1px solid #444;color:#777}
+  .lib-item.on .lb-ck{background:#3f6bd8;border-color:#5b8cff;color:#fff}
+  .lib-item .lb-v{position:absolute;top:7px;left:7px;font-size:10px;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.6);color:#ffd08a}
+  .lib-foot{display:flex;align-items:center;gap:8px;padding:11px 16px;border-top:1px solid var(--line)}
 
   /* ---------- 文档页 ---------- */
   #docsView{position:fixed;left:76px;top:0;right:0;bottom:0;background:var(--bg);z-index:32;display:none;flex-direction:column}
@@ -937,6 +955,7 @@
     </div>
     <div class="grow"></div>
     <div class="status" style="margin-right:6px"><span class="dot" id="shareDot"></span><span id="shareSrv">—</span></div>
+    <button class="btn primary" onclick="openLibShare()" title="把资产库里的作品分享到共享盘">＋ 分享作品</button>
     <button class="btn" onclick="reloadShareUI()" title="重新加载局域网共享界面">↻ 刷新</button>
     <button class="btn" onclick="openShareUI()" title="在浏览器新窗口打开">⇗ 新窗口</button>
     <button class="btn" onclick="closeShare()">返回资产库</button>
@@ -947,6 +966,31 @@
     <div class="sv-frame-mask" id="shareMask">正在连接局域网共享…</div>
   </div>
 </section>
+
+<!-- 资产库作品分享到共享：多选弹层 -->
+<div class="lib-mask" id="libShareMask">
+  <div class="lib-panel">
+    <div class="lib-head">
+      <div>
+        <div class="title" style="font-size:15px">分享资产库作品</div>
+        <div class="sub" style="margin-top:3px">
+          勾选要放进共享盘的作品<span style="color:var(--dim)"> · 已选 </span><b id="libSelCount">0</b><span style="color:var(--dim)"> 个 · 共 </span><b id="libAllCount">0</b><span style="color:var(--dim)"> 个可分享</span>
+        </div>
+      </div>
+      <div class="grow"></div>
+      <button class="btn" onclick="libSelectAll()">全选</button>
+      <button class="btn" onclick="libSelectNone()">清空</button>
+      <button class="btn" onclick="closeLibShare()">×</button>
+    </div>
+    <div class="lib-body" id="libGrid"></div>
+    <div class="lib-foot">
+      <span id="libHint" style="color:var(--dim);font-size:11.5px">分享后对方在共享界面里立刻能看到文件。</span>
+      <div class="grow"></div>
+      <button class="btn" onclick="closeLibShare()">取消</button>
+      <button class="btn primary" id="libGo" onclick="doLibShare()">⇪ 分享所选</button>
+    </div>
+  </div>
+</div>
 
 <!-- 文档页 -->
 <section id="docsView">
@@ -2617,7 +2661,7 @@ function downloadImage(){
   if(!current||!(current.files||[])[0]) return;
   const a=document.createElement('a'); a.href=imgUrl(current.files[0]); a.download=current.files[0].filename; a.click();
 }
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeViewer();closeDrawer();closeDoc();} });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeViewer();closeDrawer();closeDoc(); if(typeof closeLibShare==='function') closeLibShare();} });
 
 /* ---------- 局域网共享（直接嵌入 192.168.0.172 的原生界面） ---------- */
 let shareData=null, shareTimer=null, shareBase='', shareFrameReady=false;
@@ -2714,6 +2758,81 @@ async function pushShare(){
     body:JSON.stringify({filename:f.filename,subfolder:f.subfolder,type:f.type})})).json();
   if(j.error) return toast('推送失败：'+j.error,true);
   toast('已分享到局域网共享'); loadShare();
+}
+
+/* ---------- 资产库作品 → 共享（多选弹层） ---------- */
+let libSel = new Set();
+
+function libItems(){
+  return ((STATE && STATE.items) || []).filter(it =>
+    it.status === 'done' && (it.files || [])[0] && itemState(it) === 'done');
+}
+function libSyncCount(){
+  const n = libSel.size;
+  const c = $('libSelCount'); if(c) c.textContent = n;
+  const b = $('libGo'); if(b){ b.disabled = !n; b.style.opacity = n ? '' : '.45'; }
+}
+function openLibShare(){
+  libSel = new Set();
+  const list = libItems();
+  const all = $('libAllCount'); if(all) all.textContent = list.length;
+  const g = $('libGrid');
+  if(g) g.innerHTML = list.length ? list.map(it => {
+    const f = it.files[0];
+    return `<div class="lib-item" data-pid="${it.prompt_id}" onclick="toggleLibSel('${it.prompt_id}')"
+              title="${escapeHtml(it.prompt || '')}">
+      ${mediaThumb(f, 'lb-img', 'muted loop playsinline preload="metadata"')}
+      ${isVideoFile(f) ? '<span class="lb-v">🎬 视频</span>' : ''}
+      <span class="lb-ck">✓</span>
+      <div class="lb-meta"><b>${escapeHtml(shortWf(it.workflow))}</b>
+        <span>${it.aspect ? ratioShort(it.aspect) + ' · ' : ''}${fmtTime(it.created)}</span></div>
+    </div>`;
+  }).join('') : '<div class="tip">资产库里还没有已完成的作品。</div>';
+  libSyncCount();
+  $('libShareMask').classList.add('show');
+}
+function closeLibShare(){ $('libShareMask').classList.remove('show'); }
+function toggleLibSel(pid){
+  if(libSel.has(pid)) libSel.delete(pid); else libSel.add(pid);
+  const el = document.querySelector(`.lib-item[data-pid="${pid}"]`);
+  if(el) el.classList.toggle('on', libSel.has(pid));
+  libSyncCount();
+}
+function libSelectAll(){
+  libItems().forEach(it => libSel.add(it.prompt_id));
+  document.querySelectorAll('.lib-item').forEach(el => el.classList.add('on'));
+  libSyncCount();
+}
+function libSelectNone(){
+  libSel.clear();
+  document.querySelectorAll('.lib-item').forEach(el => el.classList.remove('on'));
+  libSyncCount();
+}
+async function doLibShare(){
+  const picked = libItems().filter(it => libSel.has(it.prompt_id)).map(it => {
+    const f = it.files[0];
+    return { filename: f.filename, subfolder: f.subfolder || '', type: f.type || 'output' };
+  });
+  if(!picked.length) return toast('先勾选要分享的作品', true);
+  const b = $('libGo');
+  if(b){ b.disabled = true; b.textContent = `正在分享 ${picked.length} 个…`; }
+  let j = {};
+  try{
+    j = await (await fetch('/api/share/push-batch', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: picked }) })).json();
+  }catch(e){
+    j = { error: e.message };
+  }
+  if(b){ b.disabled = false; b.textContent = '⇪ 分享所选'; }
+  if(j.error) return toast('分享失败：' + j.error, true);
+  if(j.ok){
+    toast(`已分享 ${j.ok} 个作品到共享` + (j.failed && j.failed.length ? `（${j.failed.length} 个失败）` : ''));
+    closeLibShare();
+    loadShare();
+    reloadShareUI();
+  }else{
+    toast('分享失败：' + ((j.failed && j.failed[0] && j.failed[0].error) || '未知原因'), true);
+  }
 }
 
 setMode('single'); syncMpLabel(); updateQuickEst(); applyViewMode();

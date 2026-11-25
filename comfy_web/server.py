@@ -1912,6 +1912,33 @@ class Handler(BaseHTTPRequestHandler):
                 SHARE.start()
                 return self._json(SHARE.upload(fn, data))
 
+            if path == "/api/share/push-batch":
+                # 资产库多选分享：一次把多张作品推到共享盘
+                p = self._payload()
+                items = p.get("items") or []
+                if not items:
+                    return self._json({"error": "missing items"}, 400)
+                SHARE.start()
+                pushed, failed = [], []
+                for it in items[:60]:
+                    fn = (it or {}).get("filename")
+                    if not fn:
+                        continue
+                    sub = it.get("subfolder") or ""
+                    typ = it.get("type") or "output"
+                    try:
+                        data = CLIENT.get("/api/view?" + urllib.parse.urlencode(
+                            {"filename": fn, "subfolder": sub, "type": typ}))
+                        if isinstance(data, dict) and data.get("error"):
+                            raise ComfyError(data["error"])
+                        res = SHARE.upload(fn, data)
+                        if isinstance(res, dict) and (res.get("ok") is False or res.get("error")):
+                            raise ComfyError(str(res.get("error") or "共享盘拒绝"))
+                        pushed.append(fn)
+                    except Exception as e:              # noqa: BLE001
+                        failed.append({"filename": fn, "error": f"{type(e).__name__}: {e}"})
+                return self._json({"ok": len(pushed), "pushed": pushed, "failed": failed})
+
             if path == "/api/refresh-workflows":
                 REG.sync()
                 REG.caps.clear()

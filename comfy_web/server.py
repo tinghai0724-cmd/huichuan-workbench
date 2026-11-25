@@ -86,6 +86,13 @@ DEFAULTS = {
         "default": float(d.get("default", 5)),
         "presets": [float(x) for x in (d.get("presets") or [5, 10, 15])],
     })(_CFG.get("video_duration") or {}),
+    # 节点替换：某些节点在本机跑不起来（比如 sageattention 版本不够）时换成语义等价、不依赖它的节点
+    # 配成 {} 可以关掉
+    "node_swaps": ({str(k): str(v) for k, v in _CFG["node_swaps"].items() if v}
+                   if isinstance(_CFG.get("node_swaps"), dict)
+                   else {"MiniMaxH3MemoryEfficientSageAttentionPatch": "MiniMaxLowVRAMAttention"}),
+    # 每次同步都以 ComfyUI 上保存的工作流为准（在 ComfyUI 里改完节点，这边自动跟着更新）
+    "sync_from_comfy": bool(_CFG.get("sync_from_comfy", True)),
 }
 
 DATA_DIR = os.path.join(HERE, "data")
@@ -162,22 +169,39 @@ class Registry:
         wdir = DEFAULTS["workflow_dir"]
         for name in rows:
             path = os.path.join(wdir, name)
-            need = True
-            if os.path.exists(path):
-                need = os.path.getsize(path) < 400      # 空/损坏才重下
-            if need:
+            remote = None
+            # 默认以 ComfyUI 上的最新存档为准（在 ComfyUI 里改完节点，这边同步就跟着更新）
+            if DEFAULTS.get("sync_from_comfy", True):
                 try:
                     # ComfyUI 的 userdata 接口要把整个相对路径（含 /）一起编码
                     enc = urllib.parse.quote("workflows/" + name, safe="")
                     blob = self.client.get("/api/userdata/" + enc)
-                    raw = (blob if isinstance(blob, bytes)
-                           else json.dumps(blob, ensure_ascii=False).encode("utf-8"))
-                    with open(path, "wb") as f:
-                        f.write(raw)
+                    remote = (blob if isinstance(blob, bytes)
+                              else json.dumps(blob, ensure_ascii=False).encode("utf-8"))
                 except Exception as e:             # noqa: BLE001
-                    # 单个工作流拉不下来不影响其它工作流
                     self.errors[name] = f"{type(e).__name__}: {e}"
                     print(f"! 工作流下载失败 {name}: {e}")
+            if remote is None:
+                need = not os.path.exists(path) or os.path.getsize(path) < 400
+                if need:
+                    print(f"! {name} 本地没有可用副本，且没从 ComfyUI 拉到")
+                    continue
+            else:
+                old = None
+                if os.path.exists(path):
+                    try:
+                        with open(path, "rb") as f:
+                            old = f.read()
+                    except Exception:               # noqa: BLE001
+                        old = None
+                if old != remote:
+                    with open(path, "wb") as f:
+                        f.write(remote)
+                    with self._lock:
+                        self.base.pop(name, None)
+                        self.caps.pop(name, None)
+                        self.errors.pop(name, None)
+                    print(f"· 已按 ComfyUI 上的版本更新 {name}（{len(remote)} 字节）")
             self.files[name] = path
         self.names = sorted(self.files, key=lambda s: s)
         if self.names and DEFAULTS.get("default_workflow") not in self.names:
@@ -219,6 +243,7 @@ class Registry:
                 print(f"· {name} 的节点都被旁路了，已按原节点恢复（{len(api2)} 节点）")
             api = api2
         _fix_value_links(api, wf)
+        _swap_node_types(api, DEFAULTS.get("node_swaps") or {}, self.oi)
         with self._lock:
             self.base[name] = api
         return copy.deepcopy(api)
@@ -357,6 +382,39 @@ def _fix_value_links(api, wf):
                 ins[k] = values[src]
             elif src not in api:
                 del ins[k]
+    return api
+
+
+def _swap_node_types(api, mapping, oi=None):
+    """按配置把某类节点换成另一类（例如 Sage Attention Patch -> Low VRAM Attention）。
+
+    mapping: {"原 class_type": "新 class_type"}；新节点必填但 prompt 里没有的参数，用 object_info 的默认值补上。
+    """
+    if not mapping:
+        return api
+    changed = []
+    for nid, n in api.items():
+        old = n.get("class_type")
+        if old not in mapping:
+            continue
+        new = mapping[old]
+        if not new or new == old:
+            continue
+        if oi is not None and new not in oi:
+            print(f"· 节点替换跳过：服务端没有 {new}")
+            continue
+        n["class_type"] = new
+        if oi is not None:
+            req = ((oi.get(new) or {}).get("input") or {}).get("required") or {}
+            for k, spec in req.items():
+                if k in (n.get("inputs") or {}):
+                    continue
+                if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], dict) \
+                        and "default" in spec[1]:
+                    n.setdefault("inputs", {})[k] = spec[1]["default"]
+        changed.append((nid, old, new))
+    for nid, old, new in changed:
+        print(f"· 节点 #{nid} 已替换：{old} → {new}")
     return api
 
 
@@ -508,6 +566,23 @@ def apply_params(prompt, caps, *, text=None, image=None, images=None, aspect=Non
         elif "noise_seed" in ins and not isinstance(ins["noise_seed"], list):
             ins["noise_seed"] = int(seed)
             touched.append("seed")
+
+    # 种子：负数（ComfyUI 里「随机」的 -1）在 API 里不合法，统一换成合法随机值；
+    # 指定了种子时也灌给 RandomNoise 这类 noise_seed 节点，保证可复现
+    for nid, n in prompt.items():
+        ins = n.get("inputs") or {}
+        for k in ("seed", "noise_seed"):
+            v = ins.get(k)
+            if isinstance(v, list) or not isinstance(v, int) or isinstance(v, bool):
+                continue
+            if seed is not None and (k == "noise_seed" or v < 0):
+                ins[k] = int(seed)
+                if "seed" not in touched:
+                    touched.append("seed")
+            elif v < 0:
+                ins[k] = secrets.randbelow(2 ** 31 - 1)
+                if "seed" not in touched:
+                    touched.append("seed")
 
     # 视频时长（秒）：写值节点，ComfyMathExpression 会把它换算成帧数
     if duration is not None and caps.get("duration"):

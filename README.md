@@ -103,12 +103,15 @@ pwsh tools/publish.ps1 -Repo tinghai0724-cmd/huichuan-workbench -Message "首页
 - 「生成」是左右分栏：左边生成过程卡片流，右边保留完整生成抽屉
 - 「工作流」内嵌原版 ComfyUI（`/comfy/*` 反代，自动代填 Basic Auth）
 - 只加载 ComfyUI 里**打了书签（星标）**的工作流：读 `userdata/workflows/.index.json` 的 `favorites`；`only_favorites: false` 可关掉（或环境变量 `CW_ONLY_FAVORITES=0`）改成全量。改完书签点 `POST /api/refresh-workflows` 即时重载，不用重启；书签里的流程若缺插件会单独标记为不可用，不影响其它流程。
+- 工作流内容**以 ComfyUI 上保存的版本为准**（`sync_from_comfy: true`，默认开）：每次启动 / 刷新都会把 `userdata/workflows/*.json` 拉到本地 `comfy_wf/`，内容有变就覆盖并重新探测。所以你在 ComfyUI 里改了节点（比如把 Sage Attention Patch 换成 `ModelAttentionBackend`）、存了盘，这边刷新一下就跟着更新。配成 `false` 则只用本地副本。
+- `node_swaps` 可做节点替换：把跑不起来的节点换成语义等价的实现（默认 `MiniMaxH3MemoryEfficientSageAttentionPatch → MiniMaxLowVRAMAttention`，新节点缺的必填参数用 `object_info` 的默认值补齐）；配成 `{}` 关掉。
 - 「文档」放词表/文案：xlsx、csv、tsv、txt、md、json、docx 解析成行，按行搜索、复制或一键填进生成对话框；pdf/doc/xls 只存原文不解析
 - 首页 / 生成页有 **图像 / 视频** 模式开关：图像模式只列图像类流程（视频流程全部隐藏），视频模式只列 `video_workflows` 里的流程（默认 `minimax h3 图生视频`、`MINIMax H3 文生视频`、`minimax H3 首尾帧`），整站换成彩色主题——主按钮走 `紫→青→粉→橙` 渐变动画，首页铺一层低透明度动态彩色光斑
 - 视频模式下多一个「⏱ 时长」参数：档位由 `video_duration` 配置（默认 `5 / 10 / 15` 秒，受 MiniMax H3 限制），写进流程里 `PrimitiveFloat(秒)` 节点，后面的 `ComfyMathExpression` 负责折算成帧并对齐 17 帧音频块；流程没有时长节点时显示「时长固定」
 - 画幅比例是按截图做的可搜索下拉：`2:3 / 3:2 / 3:4 / 4:3 / 9:16 / 16:9 / 21:9`（7 项，带放大镜搜索、选中打勾）；像素是 14 档阶梯 `0.2→2.0 MP`，滑块标签同时显示按 `multiple=32` 算出的实际输出像素（如 `1.0 MP · 1344 × 768`）。工作流尺寸固定（`size_mode=none`）时，比例与像素都会置灰并在下面提示「不支持调节」
 - 参考图最多 5 张：按顺序填进工作流里的 LoadImage 位（首尾帧流程会标成「首帧 / 尾帧」）；图比图像位多时，多出来的会各自挂一个「加载图像」节点进工作流（需要在 ComfyUI 里把节点连到对应输入才生效）
 - 视频结果在卡片 / 生成流 / 大图里都按视频播放（`/api/img` 支持 Range，可拖动进度条）
+- 种子兼容：工作流里存着 `-1`（ComfyUI 的「随机」）时，提交前会换成合法随机值（`RandomNoise` 的 `noise_seed` 最小值是 0，直接发 -1 会被服务端判 400）；手填种子会同时写进采样器和 `noise_seed`。
 - 工作流里被旁路（mode=4）的节点，转换 API 时按 ComfyUI 的旁路语义把同类型输入透传给下游（否则 `SageAttentionPatch` 一类直通节点旁路后会断掉 `model` 连线、提交 400）
 - 用系统默认光标（早期那套「跟随光点 + 蓝色缓动圆环 + 点击涟漪」已移除）
 

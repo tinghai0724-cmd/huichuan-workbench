@@ -6,5 +6,7 @@
   "port": 8787,
   "default_workflow": "MINIMax H3 文生视频.json",
   "only_favorites": true,
+  "extra_workflows": ["minimax H3 首尾帧.json"],
+  "video_workflows": ["minimax h3 图生视频.json", "MINIMax H3 文生视频.json", "minimax H3 首尾帧.json"],
   "cors": "*"
 }

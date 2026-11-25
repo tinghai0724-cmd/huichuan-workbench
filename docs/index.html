@@ -592,6 +592,75 @@
     #genView.split .gen-top .btn{font-size:11px;padding:5px 8px}
     #genView.split .gi-prompt{font-size:11.5px;padding:9px 10px;line-height:1.7}
   }
+
+  /* ==================== 图像 / 视频 模式切换 ==================== */
+  .modesw{display:inline-flex;align-items:center;height:34px;padding:3px;border-radius:11px;background:#0e0e11;border:1px solid #24242a;gap:2px;flex:none}
+  .modesw .ms{border:none;background:transparent;color:#8f8f98;font-size:12px;font-family:inherit;padding:0 11px;height:26px;border-radius:8px;cursor:pointer;white-space:nowrap;transition:.16s}
+  .modesw .ms:hover{color:#e6e6ea}
+  .modesw .ms.on{color:#eaf1ff;background:linear-gradient(135deg,#023a91,#1f5cc0);box-shadow:0 2px 10px rgba(2,58,145,.45)}
+  body.vmode .modesw .ms.on{color:#fff;background:linear-gradient(120deg,#7b4dff,#00d0ff,#ff4fd8);background-size:200% 200%;animation:gradShift 6s ease infinite}
+
+  /* 视频模式：彩色主题 */
+  body.vmode{
+    --accent:#7b4dff;--accent-2:#9ef0ff;
+    --vb:#07040e;
+  }
+  body.vmode .qgen,body.vmode .composer .go,body.vmode .btn.primary,
+  body.vmode .drawer .btn.primary{
+    background:linear-gradient(120deg,#7b4dff,#00d0ff,#ff4fd8,#ffb347,#7b4dff);
+    background-size:320% 320%;
+    animation:gradShift 7s ease infinite;
+    color:#fff;border-color:transparent;
+    box-shadow:0 6px 24px rgba(123,77,255,.34);
+  }
+  body.vmode .qgen:hover,body.vmode .composer .go:hover,body.vmode .btn.primary:hover{filter:brightness(1.12);box-shadow:0 8px 30px rgba(255,79,216,.36)}
+  body.vmode .nav-item.active{background:#150f2b;color:#c9b8ff}
+  body.vmode .wf-chip.on{color:#eae2ff;border-color:rgba(155,120,255,.7);background:rgba(123,77,255,.34)}
+  body.vmode .qpill.on{border-color:rgba(155,120,255,.65);color:#eee6ff;background:rgba(123,77,255,.3)}
+  body.vmode .qbox:focus-within{border-color:rgba(155,120,255,.6);box-shadow:0 0 0 3px rgba(123,77,255,.22)}
+  body.vmode .qslide input[type=range]{background:linear-gradient(90deg,#7b4dff,#00d0ff,#ff4fd8)}
+  body.vmode .ref-item .idx{background:rgba(123,77,255,.9);color:#f3ecff}
+  body.vmode .composer .spark{color:#9ef0ff}
+
+  /* 首页：低透明度动态彩色背景 */
+  body.vmode #homeView{background:#07040e}
+  body.vmode #homeView::before{
+    content:"";position:absolute;inset:-25%;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(closest-side at 22% 28%,rgba(123,77,255,.55),transparent 72%),
+      radial-gradient(closest-side at 78% 22%,rgba(0,208,255,.42),transparent 70%),
+      radial-gradient(closest-side at 68% 82%,rgba(255,79,216,.42),transparent 72%),
+      radial-gradient(closest-side at 12% 88%,rgba(255,179,71,.3),transparent 70%);
+    filter:blur(70px);opacity:.52;
+    animation:auraDrift 26s ease-in-out infinite alternate;
+  }
+  @keyframes auraDrift{
+    0%{transform:translate3d(-2%,-1%,0) scale(1) rotate(0deg)}
+    50%{transform:translate3d(3%,2%,0) scale(1.12) rotate(6deg)}
+    100%{transform:translate3d(-1%,3%,0) scale(1.05) rotate(-5deg)}
+  }
+  body.vmode #homeView .home-scroll{position:relative;z-index:1}
+  body.vmode #genView::before{
+    content:"";position:absolute;inset:-20%;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(closest-side at 20% 18%,rgba(123,77,255,.42),transparent 70%),
+      radial-gradient(closest-side at 82% 78%,rgba(255,79,216,.34),transparent 70%);
+    filter:blur(60px);opacity:.4;animation:auraDrift 30s ease-in-out infinite alternate;
+  }
+  body.vmode #genView .gen-wrap{position:relative;z-index:1}
+
+  @keyframes gradShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+
+  /* 视频结果：统一当封面播 */
+  .thumb.vid,img.thumb, video.thumb{display:block}
+  video.thumb{width:100%;background:#0d0d10;object-fit:cover}
+  .viewer video{max-height:88vh;max-width:56vw;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,.6);background:#000}
+  .gi-media video{width:100%;height:100%;object-fit:cover;display:block;border-radius:14px}
+  .gi-media .vbadge{position:absolute;right:10px;bottom:10px;font-size:11px;padding:3px 9px;border-radius:999px;background:rgba(0,0,0,.6);color:#dcd6ff;border:1px solid rgba(155,120,255,.5)}
+  .card .vtag{position:absolute;right:8px;top:8px;font-size:11px;padding:3px 8px;border-radius:999px;background:rgba(0,0,0,.62);color:#dcd6ff;border:1px solid rgba(155,120,255,.5);z-index:2}
+  .imgwrap{position:relative}
+  .mediawrap{display:block;width:100%;height:100%;position:relative}
+  .mediawrap img,.mediawrap video{width:100%;height:100%;object-fit:cover;display:block;border-radius:14px}
 </style>
 </head>
 <body>
@@ -723,6 +792,10 @@
         <div class="ref-strip" id="homeRefStrip"></div>
         <textarea id="homePrompt" placeholder="描述你想生成的画面，例如：蓝紫色赛博风夜景，霓虹灯，超广角构图"></textarea>
         <div class="qbar">
+          <div class="modesw" id="homeMode">
+            <button type="button" data-m="image" class="ms on" onclick="setOutMode('image')">🖼 图像</button>
+            <button type="button" data-m="video" class="ms" onclick="setOutMode('video')">🎬 视频</button>
+          </div>
           <button class="qpill qref" id="homeRefPill" onclick="homePickRef()" title="加入参考图（最多 5 张）">
             <span class="ic" id="homeRefIc">🖼</span>
             <span id="homeRefText">参考图</span>
@@ -779,6 +852,10 @@
         <div class="ref-strip" id="gcRefStrip"></div>
         <textarea id="gcPrompt" placeholder="继续描述你想生成的画面，Enter 直接生成"></textarea>
         <div class="qbar">
+          <div class="modesw" id="gcMode">
+            <button type="button" data-m="image" class="ms on" onclick="setOutMode('image')">🖼 图像</button>
+            <button type="button" data-m="video" class="ms" onclick="setOutMode('video')">🎬 视频</button>
+          </div>
           <button class="qpill qref" id="gcRefPill" onclick="homePickRef()" title="加入参考图（最多 5 张）">
             <span class="ic" id="gcRefIc">🖼</span>
             <span id="gcRefText">参考图</span>
@@ -975,6 +1052,7 @@
 <div class="viewer" id="viewer">
   <div class="close-v" onclick="closeViewer()">✕</div>
   <img id="vImg">
+  <video id="vVid" controls playsinline loop style="display:none"></video>
   <div class="vpanel">
     <h3>提示词</h3>
     <div class="p" id="vPrompt"></div>
@@ -1061,6 +1139,9 @@ let refImages = [];
 let refUrls = [];
 let curRatio='16:9 (Widescreen)';
 let WF_NAME='';
+// 输出模式：image / video。视频模式下换彩色主题、只列视频流程
+let OUT_MODE='image';
+try{ OUT_MODE = (localStorage.getItem('cw_out_mode')==='video') ? 'video' : 'image'; }catch(e){}
 
 // 比例按钮（抽屉里的 chip 行）
 RATIOS.forEach(([val,label])=>{
@@ -1089,6 +1170,17 @@ function fmtTime(ts){const d=new Date(ts*1000),diff=Date.now()/1000-ts;
   if(diff<86400)return Math.floor(diff/3600)+' 小时前';
   return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}
 function imgUrl(f){const q=new URLSearchParams({filename:f.filename,subfolder:f.subfolder||'',type:f.type||'output'});if(CW_TOKEN)q.set('t',CW_TOKEN);return apiUrl('/api/img?'+q.toString())}
+// 结果文件是图还是视频：ComfyUI 的 outputs 里 videos/gifs 才算视频，文件名再兜一层
+function isVideoFile(f){
+  if(!f) return false;
+  if((f.kind||'')==='videos'||(f.kind||'')==='gifs') return true;
+  return /\.(mp4|webm|mov|mkv|m4v|gif)$/i.test(f.filename||'');
+}
+function mediaThumb(f, cls, attrs){
+  const url=imgUrl(f);
+  if(isVideoFile(f)) return `<video class="${cls||''}" src="${url}" ${attrs||'muted loop playsinline preload="metadata"'} autoplay></video>`;
+  return `<img class="${cls||''}" src="${url}" alt="">`;
+}
 function shareDl(id){return withToken(apiUrl('/api/share/download?id='+encodeURIComponent(id)))}
 function shortWf(n){return (n||'—').replace('.json','').replace(/^[【▶▷\s]+/,'').slice(0,14)}
 
@@ -1182,6 +1274,14 @@ async function load(){
   const r=await fetch('/api/state');
   if(r.status===401){ showLogin(null); return; }
   STATE=await r.json();
+  // 恢复上次的 图像/视频 模式；视频模式下若当前流程不是视频流程就换到指定的视频流程
+  applyModeUI(true);
+  if(OUT_MODE==='video'){
+    const vids=modeWfs().filter(w=>w.ok).map(w=>w.name);
+    if(vids.length && vids.indexOf(WF_NAME)<0) WF_NAME=vids[0];
+  }else if(WF_NAME && !capsOf(WF_NAME).name && STATE.default_workflow){
+    WF_NAME=STATE.default_workflow;
+  }
   if(!WF_NAME) WF_NAME = localStorage.getItem('wf') || STATE.default_workflow || '';
   renderWorkflowSelect();
   onWorkflowChange(true);
@@ -1189,9 +1289,25 @@ async function load(){
   health();
 }
 
+// 视频模式优先用后端给的 video_workflows（用户指定的三个），没配就按探测到的「视频」流程兜底
+function videoWfList(){
+  const known=[];
+  ((STATE&&STATE.video_workflows)||[]).forEach(n=>{ const c=capsOf(n); if(c && c.ok!==false) known.push(n); });
+  if(known.length) return known;
+  return ((STATE&&STATE.workflows)||[]).filter(w=>w.ok && (w.kind==='视频'||w.video)).map(w=>w.name);
+}
+function isVideoWf(n){ return videoWfList().indexOf(n)>=0; }
+function modeWfs(){
+  const all=(STATE&&STATE.workflows)||[];
+  if(OUT_MODE!=='video') return all;
+  const names=videoWfList();
+  return all.filter(w=>names.indexOf(w.name)>=0);
+}
+
 function renderWorkflowSelect(){
   const sel=$('wf'); if(!sel) return;
-  const html = STATE.workflows.map(w=>{
+  const list=modeWfs();
+  const html = list.map(w=>{
     const dis = w.ok? '' : ' disabled';
     return `<option value="${w.name}"${dis}>${w.label}${w.ok?'':'（不可用）'}</option>`;
   }).join('');
@@ -1205,7 +1321,7 @@ function renderWorkflowSelect(){
     ['wf','homeWf','drawerWf','gcWf'].forEach(id=>{ const el=$(id); if(el) el.value=WF_NAME; });
   }
   const okN=STATE.workflows.filter(w=>w.ok).length;
-  $('wfCount').textContent = `${STATE.workflows.length} 个工作流可用 ${okN}`;
+  $('wfCount').textContent = `${STATE.workflows.length} 个工作流可用 ${okN}` + (OUT_MODE==='video'?` · 视频 ${list.length}`:'');
   const badge=$('drawerWfBadge'); if(badge) badge.textContent=`${STATE.workflows.length} 个，可用 ${okN}`;
   const hc=$('heroWfCount'); if(hc) hc.textContent=`${okN} 个可用`;
 }
@@ -1221,6 +1337,47 @@ function setWfFrom(name){
 }
 
 function capsOf(name){return STATE.workflows.find(w=>w.name===name)||{}}
+
+/* ---------- 图像 / 视频 模式 ---------- */
+function applyModeUI(light){
+  document.body.classList.toggle('vmode', OUT_MODE==='video');
+  ['homeMode','gcMode'].forEach(id=>{
+    const b=$(id); if(!b) return;
+    [...b.querySelectorAll('.ms')].forEach(x=>x.classList.toggle('on', x.dataset.m===OUT_MODE));
+  });
+  const g=$('homeGen'); if(g) g.textContent = OUT_MODE==='video' ? '🎬 生成视频' : '✦ 生成';
+  const g2=$('gcGen'); if(g2) g2.textContent = OUT_MODE==='video' ? '🎬 生成视频' : '✦ 生成';
+  const sub=$('homeBrandSub');
+  if(sub && OUT_MODE==='video') sub.textContent = sub.textContent.replace(' · 视频模式','') + ' · 视频模式';
+  if(sub && OUT_MODE!=='video') sub.textContent = sub.textContent.replace(' · 视频模式','');
+  const tip=$('homeTip');
+  if(tip) tip.textContent = OUT_MODE==='video'
+    ? '视频模式 · Enter 提交 · 画幅与时长由所选视频流程决定'
+    : '按 Enter 直接提交 · Shift+Enter 换行';
+  if(!light) renderWorkflowSelect();
+  renderHomeWfChips();
+  updateHomeRef();
+}
+function setOutMode(m){
+  m = (m==='video') ? 'video' : 'image';
+  if(OUT_MODE===m){ applyModeUI(); return; }
+  OUT_MODE=m;
+  try{ localStorage.setItem('cw_out_mode', m); }catch(e){}
+  const vids=modeWfs().filter(w=>w.ok).map(w=>w.name);
+  if(m==='video' && vids.length && vids.indexOf(WF_NAME)<0){ WF_NAME=vids[0]; }
+  // 灵感广场跟着切筛选：视频模式只看视频作品
+  homeKind = (m==='video') ? '视频' : '全部';
+  [...document.querySelectorAll('.filters .chip')].forEach(c=>{
+    if(c.dataset && c.dataset.k) c.classList.toggle('on', c.dataset.k===homeKind);
+  });
+  applyModeUI();
+  if(m==='video' && needsImage(WF_NAME) && !refImages.length){
+    toast('这个视频流程要参考图，点「参考图」加上首帧',true);
+  }else{
+    toast(m==='video'?'已切到视频模式 · 只列可用的视频流程':'已切回图像模式');
+  }
+  if(WF_NAME) onWorkflowChange(true);
+}
 
 function onWorkflowChange(silent){
   WF_NAME = $('wf').value || WF_NAME;
@@ -1278,7 +1435,10 @@ function groupByDate(items){
 function cardHtml(it){
   const st=itemState(it), file=(it.files||[])[0];
   let media;
-  if(st==='done'&&file) media=`<img class="thumb" src="${imgUrl(file)}" alt="">`;
+  const vid = st==='done'&&file&&isVideoFile(file);
+  if(st==='done'&&file) media=vid
+    ? `${mediaThumb(file,'thumb')}<div class="vtag">🎬 视频</div>`
+    : mediaThumb(file,'thumb');
   else if(st==='error') media=`<div class="skeleton" style="aspect-ratio:4/3;display:grid;place-items:center;animation:none;color:#ff9c85">生成失败<br><span style="font-size:11px;color:#77777f">点开看原因</span></div>`;
   else media=`<div class="skeleton" style="aspect-ratio:4/3;display:grid;place-items:center;color:#8f8f98;font-size:12px">排队 / 生成中…</div>`;
   const badge = st==='done'? '' : `<div class="state ${st==='error'?'error':'running'}">${st==='error'?'失败':(st==='running'?'生成中':'排队中')}</div>`;
@@ -1774,6 +1934,29 @@ function initBrandFX(){
   });
 }
 
+function renderHomeWfChips(){
+  const chips=$('homeWfChips'); if(!chips) return;
+  const list=modeWfs();
+  const sig=(OUT_MODE==='video'?'V:':'I:')+list.map(w=>w.name+(w.ok?'1':'0')).join('|');
+  if(chips.dataset.sig===sig){
+    [...chips.children].forEach(c=>c.classList.toggle('on', c.dataset && c.dataset.n===WF_NAME));
+    return;
+  }
+  chips.dataset.sig=sig;
+  if(!list.length){
+    chips.innerHTML=`<span style="font-size:12px;color:#7c7c85">这个模式下还没有可用流程</span>`;
+    return;
+  }
+  chips.innerHTML = list.map(w=>{
+    const need = w.can_image && w.has_prompt===false;   // 必须给参考图的流程
+    const label = (w.label||w.name).replace('.json','').replace(/^[【▶▷\s]+/,'');
+    const ic = (w.kind==='视频') ? '🎬 ' : '';
+    return `<button class="wf-chip ${w.name===WF_NAME?'on':''}${w.ok?'':' dis'}${need?' needimg':''}"
+    data-n="${escapeHtml(w.name)}" title="${escapeHtml((w.label||w.name)+(need?'（必须给参考图）':''))}"
+    ${w.ok?`onclick="setWfFrom(this.dataset.n)"`:'disabled'}>${ic}${escapeHtml(label)}${need?' ·需图':''}</button>`;
+  }).join('');
+}
+
 function renderHome(){
   const items0=STATE.items||[], wfs=STATE.workflows||[];
   const okN=wfs.filter(w=>w.ok).length;
@@ -1787,17 +1970,7 @@ function renderHome(){
   if($('homeBrandSub')){
     $('homeBrandSub').textContent = `COMFYUI 工作台 · ${items0.length} 件作品 · ${okN}/${wfs.length} 个工作流可用`;
   }
-  const chips=$('homeWfChips');
-  if(chips && wfs.length && chips.dataset.sig!==wfs.map(w=>w.name+(w.ok?'1':'0')).join('|')){
-    chips.dataset.sig=wfs.map(w=>w.name+(w.ok?'1':'0')).join('|');
-    chips.innerHTML = wfs.map(w=>{
-      const need = w.can_image && w.has_prompt===false;   // 必须给参考图的流程
-      const label = (w.label||w.name).replace('.json','').replace(/^[【▶▷\s]+/,'');
-      return `<button class="wf-chip ${w.name===WF_NAME?'on':''}${w.ok?'':' dis'}${need?' needimg':''}"
-      data-n="${escapeHtml(w.name)}" title="${escapeHtml((w.label||w.name)+(need?'（必须给参考图）':''))}"
-      ${w.ok?`onclick="setWfFrom(this.dataset.n)"`:'disabled'}>${escapeHtml(label)}${need?' ·需图':''}</button>`;
-    }).join('');
-  }
+  renderHomeWfChips();
   syncHomeWfUI();
 
   let items=items0.filter(it=>itemState(it)==='done');
@@ -1856,34 +2029,50 @@ function cycleRatio(){
 }
 function homePickRef(){
   const c=capsOf(WF_NAME);
-  if(!c.can_image) return toast('当前工作流没有图片输入，换个带参考图的流程',true);
+  if(!c.can_image) toast('这个流程没有图像输入位，参考图会作为「加载图像」节点挂进工作流；先在 ComfyUI 里把节点连到对应输入才起作用',true);
   $('homeFileInput').click();
 }
 
 /* ---------- 参考图（多张） ---------- */
+// 第 i 张参考图对应工作流里的哪个图像位（首尾帧流程会显示 首帧 / 尾帧）
+function slotLabel(i){
+  const c=capsOf(WF_NAME), titles=c.image_titles||[];
+  const t=(titles[i]||'').toString();
+  if(/首|first|start/i.test(t)) return '首帧';
+  if(/尾|last|end/i.test(t)) return '尾帧';
+  if(/蒙版|mask/i.test(t)) return '蒙版';
+  return titles.length>1 ? ('图 '+(i+1)) : '';
+}
 function refPillState(){
   const c=capsOf(WF_NAME);
+  const slots=c.image_slots||0;
   const need = needsImage(WF_NAME) && refImages.length===0;
+  const extra = Math.max(0, refImages.length - slots);
+  const hint = !slots
+    ? '该流程没有图像位，参考图会作为独立「加载图像」节点挂进工作流（需在 ComfyUI 里连线）'
+    : (extra ? `已填满 ${slots} 个图像位，多出的 ${extra} 张会作为额外加载图像节点挂入` : `这个流程有 ${slots} 个图像位`);
   ['homeRefPill','gcRefPill'].forEach(id=>{
     const p=$(id); if(!p) return;
     p.classList.toggle('need', need);
     p.classList.toggle('on', refImages.length>0);
-    p.classList.toggle('off', !c.can_image);
-    p.title = !c.can_image ? '该工作流没有图片输入'
-      : (need ? '这个工作流必须给参考图' : `参考图 ${refImages.length}/${REF_MAX}`);
+    p.classList.remove('off');
+    p.title = need ? ('这个工作流必须给参考图 · ' + hint) : hint;
   });
-  ['homeRefText','gcRefText'].forEach(id=>{
-    const el=$(id); if(!el) return;
-    el.textContent = refImages.length ? `参考图 ${refImages.length}/${REF_MAX}` : (needsImage(WF_NAME) ? '需要参考图' : '参考图');
-  });
+  const txt = refImages.length
+    ? `参考图 ${refImages.length}/${REF_MAX}${slots?` · 位 ${Math.min(refImages.length,slots)}/${slots}`:''}`
+    : (needsImage(WF_NAME) ? '需要参考图' : (slots?`参考图 · ${slots} 位`:'参考图'));
+  ['homeRefText','gcRefText'].forEach(id=>{ const el=$(id); if(el) el.textContent=txt; });
   ['homeRefIc','gcRefIc'].forEach(id=>{ const el=$(id); if(el) el.textContent='🖼'; });
 }
 function renderRefStrip(){
-  const html = refImages.map((name,i)=>`<div class="ref-item" title="${escapeHtml(name)}">
+  const html = refImages.map((name,i)=>{
+    const lb=slotLabel(i);
+    return `<div class="ref-item" title="${escapeHtml(lb?lb+' · '+name:name)}">
       <img src="${refUrls[i]||''}" alt="">
-      <span class="idx">${i+1}</span>
+      <span class="idx">${lb||(i+1)}</span>
       <button class="del" onclick="removeRef(${i})" title="移除">×</button>
-    </div>`).join('') +
+    </div>`;
+  }).join('') +
     (refImages.length<REF_MAX
       ? `<button class="ref-add" onclick="homePickRef()" title="再加一张">+</button>`
       : '');
@@ -1909,13 +2098,13 @@ function clearRefs(){
 /* 批量上传参考图（最多 5 张），逐张写进 ComfyUI input */
 async function addRefFiles(files){
   const c=capsOf(WF_NAME);
-  if(!c.can_image) return toast('当前工作流没有图片输入',true);
   const list=[...files].filter(f=>f.type.startsWith('image/'));
   if(!list.length) return;
   const room=REF_MAX-refImages.length;
   if(room<=0) return toast(`最多 ${REF_MAX} 张参考图`,true);
   const use=list.slice(0,room);
   if(list.length>room) toast(`最多 ${REF_MAX} 张，多余的已忽略`,true);
+  if(!c.can_image) toast('这个流程没有图像位，图片会作为「加载图像」节点挂进工作流',true);
   for(const f of use){
     try{
       const fd=new FormData(); fd.append('image',f); fd.append('type','input'); fd.append('overwrite','true');
@@ -1935,13 +2124,19 @@ $('homeFileInput').addEventListener('change', async e=>{
 
 async function homeGenerate(){
   const t=(($('homePrompt')&&$('homePrompt').value)||'').trim();
-  if(!t) return toast('先描述你想生成的画面',true);
-  if(needsImage(WF_NAME) && !refImages.length){ refPillState(); return toast('「'+((capsOf(WF_NAME).label)||WF_NAME)+'」必须给参考图，点「参考图」加上',true); }
+  const c=capsOf(WF_NAME);
+  if(!t && c.has_prompt!==false) return toast('先描述你想生成的画面',true);
+  if(!t && !refImages.length) return toast('先写提示词，或至少加一张参考图',true);
+  if(needsImage(WF_NAME) && !refImages.length){ refPillState(); return toast('「'+(c.label||WF_NAME)+'」必须给参考图，点「参考图」加上',true); }
+  if(c.kind==='视频' && (c.image_slots||0)>refImages.length){
+    refPillState();
+    return toast(`「${c.label||WF_NAME}」要 ${c.image_slots} 张参考图${c.image_slots>1?'（首帧 / 尾帧）':''}，现在只有 ${refImages.length} 张`,true);
+  }
   const btn=$('homeGen'); if(btn.disabled) return;
   btn.disabled=true; const old=btn.textContent; btn.textContent='提交中…';
   const payload={...payloadBase(), prompt:t};
   // 一开始生成，首页立即切换为生成过程页
-  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:+$('mp').value, image:refImages[0]||null, images:refImages.slice()};
+  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:+$('mp').value, image:refImages[0]||null, images:refImages.slice(), video:(OUT_MODE==='video')};
   genPid=null;
   $('homePrompt').value='';
   openGenView();
@@ -1952,7 +2147,9 @@ async function homeGenerate(){
     if(j.error) throw new Error(j.error);
     genPending=null; genPid=j.prompt_id;
     await load(); renderThread(true); startGenPoll();
-    toast('已提交，任务进入队列');
+    if(j.image_extra) toast(`已提交 · ${j.image_bound} 张进了图像位，另 ${j.image_extra} 张作为额外「加载图像」节点挂入`);
+    else if(j.image_bound) toast(`已提交 · ${j.image_bound} 张参考图已填入工作流`);
+    else toast((OUT_MODE==='video'?'视频任务已提交，排队中':'已提交，任务进入队列'));
   }catch(e){
     genPending=null; backFromGen();
     toast('提交失败：'+fmtErr(e),true);
@@ -1973,7 +2170,11 @@ function fmtDur(s){
 }
 
 function genMediaHtml(it, st, f){
-  if(st==='done' && f) return `<img src="${imgUrl(f)}" alt="" onclick="openViewer('${it.prompt_id}')">`;
+  if(st==='done' && f){
+    const vid=isVideoFile(f);
+    const body = mediaThumb(f, '', vid?'controls loop playsinline preload="metadata" muted':'');
+    return `<div class="mediawrap" onclick="openViewer('${it.prompt_id}')">${body}${vid?'<div class="vbadge">🎬 视频</div>':''}</div>`;
+  }
   const label = st==='error' ? '生成失败' : (st==='running' ? '生成中 ▶▶▶' : '排队中 ▶▶▶');
   const fail = st==='error' ? `<div class="gi-failbox">${escapeHtml(it.message||'工作流执行出错')}</div>` : '';
   return `<div class="gen-blobs"></div><div class="gi-badge">${label}</div>${fail}`;
@@ -1990,7 +2191,7 @@ function genItemHtml(it){
     <div class="gi-meta">
       <span class="st ${st==='error'?'err':(st==='done'?'done':'')}">${stTxt}</span>
       <span class="tm">${fmtTime(it.created||0)}</span>
-      <span>${escapeHtml((it.workflow||'').replace('.json',''))}${mp?' · '+mp:''}${it.aspect?' · '+ratioShort(it.aspect):''}${it.origin?' · '+escapeHtml(it.origin):''}</span>
+      <span>${it.kind==='视频'?'🎬 ':''}${escapeHtml((it.workflow||'').replace('.json',''))}${mp?' · '+mp:''}${it.aspect?' · '+ratioShort(it.aspect):''}${it.origin?' · '+escapeHtml(it.origin):''}</span>
     </div>
     <div class="gi-bar"><i></i></div>
   </div>`;
@@ -2103,8 +2304,14 @@ async function pollCard(pid){
 
 async function genGenerate(){
   const t=(($('gcPrompt')&&$('gcPrompt').value)||'').trim();
-  if(!t) return toast('先描述你想生成的画面',true);
-  if(needsImage(WF_NAME) && !refImages.length){ refPillState(); return toast('「'+((capsOf(WF_NAME).label)||WF_NAME)+'」必须给参考图，点「参考图」加上',true); }
+  const c=capsOf(WF_NAME);
+  if(!t && c.has_prompt!==false) return toast('先描述你想生成的画面',true);
+  if(!t && !refImages.length) return toast('先写提示词，或至少加一张参考图',true);
+  if(needsImage(WF_NAME) && !refImages.length){ refPillState(); return toast('「'+(c.label||WF_NAME)+'」必须给参考图，点「参考图」加上',true); }
+  if(c.kind==='视频' && (c.image_slots||0)>refImages.length){
+    refPillState();
+    return toast(`「${c.label||WF_NAME}」要 ${c.image_slots} 张参考图${c.image_slots>1?'（首帧 / 尾帧）':''}，现在只有 ${refImages.length} 张`,true);
+  }
   const btn=$('gcGen'); if(btn.disabled) return;
   btn.disabled=true; const old=btn.textContent; btn.textContent='提交中…';
   const payload={...payloadBase(), prompt:t};
@@ -2117,7 +2324,8 @@ async function genGenerate(){
     $('gcPrompt').value='';
     genPending=null; genPid=j.prompt_id;
     await load(); renderThread(true); startGenPoll();
-    toast('已提交，任务进入队列');
+    if(j.image_extra) toast(`已提交 · ${j.image_bound} 张进了图像位，另 ${j.image_extra} 张作为额外节点挂入`);
+    else toast('已提交，任务进入队列');
   }catch(e){
     genPending=null; renderThread(false);
     toast('提交失败：'+fmtErr(e),true);
@@ -2261,10 +2469,20 @@ function findItem(pid){return STATE.items.find(i=>i.prompt_id===pid)}
 function openViewer(pid){
   const it=findItem(pid); if(!it) return; current=it;
   const file=(it.files||[])[0], st=itemState(it), job=STATE.jobs[it.prompt_id]||{};
-  if(file){ vImg.src=imgUrl(file); vImg.style.display='block'; } else { vImg.style.display='none'; }
+  const isVid = !!file && isVideoFile(file);
+  if(file && isVid){
+    vImg.style.display='none'; vImg.src='';
+    vVid.style.display='block'; vVid.src=imgUrl(file);
+  }else if(file){
+    vVid.pause && vVid.pause(); vVid.style.display='none'; vVid.src='';
+    vImg.src=imgUrl(file); vImg.style.display='block';
+  }else{
+    vVid.style.display='none'; vVid.src=''; vImg.style.display='none';
+  }
   vPrompt.textContent=it.prompt||'';
   vMeta.innerHTML=[
     ['状态', st==='done'?'已完成':(st==='error'?'失败':(st==='running'?'生成中':'排队中'))],
+    ['类型', isVid?'视频':'图片'],
     ['工作流', shortWf(it.workflow)],
     it.aspect?['比例', ratioShort(it.aspect)]:null,
     it.megapixels?['像素', (+it.megapixels).toFixed(1)+' MP']:null,
@@ -2275,7 +2493,10 @@ function openViewer(pid){
   ].filter(Boolean).map(([k,v])=>`<div class="kv"><span>${k}</span><b>${escapeHtml(String(v))}</b></div>`).join('');
   $('viewer').classList.add('show');
 }
-function closeViewer(){ $('viewer').classList.remove('show'); current=null; }
+function closeViewer(){
+  try{ if(vVid && vVid.pause){ vVid.pause(); } }catch(e){}
+  $('viewer').classList.remove('show'); current=null;
+}
 viewer.onclick=e=>{ if(e.target===viewer) closeViewer(); };
 async function rerun(){
   if(!current) return;

@@ -72,6 +72,12 @@ DEFAULTS = {
                       not in ("0", "false", "no")
                       if (os.environ.get("CW_ONLY_FAVORITES") or "").strip()
                       else bool(_CFG.get("only_favorites", True)),
+    # 书签之外仍要加载的工作流（没打星标但常用，比如首尾帧）
+    "extra_workflows": [str(x) for x in (_CFG.get("extra_workflows") or []) if str(x).strip()],
+    # 视频模式默认备选（按这个顺序排在前面）
+    "video_workflows": [str(x) for x in (_CFG.get("video_workflows") or []) if str(x).strip()]
+                       or ["minimax h3 图生视频.json", "MINIMax H3 文生视频.json",
+                           "minimax H3 首尾帧.json"],
 }
 
 DATA_DIR = os.path.join(HERE, "data")
@@ -129,11 +135,15 @@ class Registry:
         # 只加载 ComfyUI 里打了书签（收藏）的工作流；没有书签就回落到全部
         if DEFAULTS.get("only_favorites", True):
             fav = self.favorites()
-            if fav:
-                picked = [n for n in rows if n in fav]
+            extra = [n for n in (DEFAULTS.get("extra_workflows") or []) if n in rows and n not in (fav or [])]
+            if fav or extra:
+                wanted = set(fav or []) | set(extra)
+                picked = [n for n in rows if n in wanted]
                 if picked:
                     rows = picked
-                    print(f"· 只加载书签工作流：{len(rows)} 个（共 {len(fav)} 个书签）")
+                    note = f"· 只加载书签工作流：{len(picked)} 个（共 {len(fav or [])} 个书签"
+                    note += f" + {len(extra)} 个额外流程）" if extra else "）"
+                    print(note)
                 else:
                     print("· 书签里的工作流在 ComfyUI 上找不到，回落到全部")
             else:
@@ -183,6 +193,21 @@ class Registry:
         api = convert_ui_to_api(wf, self.oi) if "nodes" in wf else {
             k: v for k, v in wf.items() if isinstance(v, dict) and "class_type" in v
         }
+        # 有些工作流是「整张图被旁路着」保存的（所有节点 mode=4），转出来是空的。
+        # 这种情况把旁路当作启用再转一遍，否则会误判成「文生图 0 槽」。
+        if "nodes" in wf and not _has_output(api):
+            wf2 = copy.deepcopy(wf)
+            for nd in wf2.get("nodes") or []:
+                if nd.get("mode") in (2, 4):
+                    nd["mode"] = 0
+            try:
+                api2 = convert_ui_to_api(wf2, self.oi)
+            except Exception as e:                   # noqa: BLE001
+                raise ValueError(f"工作流整张被旁路，恢复后仍无法转换：{type(e).__name__}: {e}")
+            if _has_output(api2):
+                print(f"· {name} 的节点都被旁路了，已按原节点恢复（{len(api2)} 节点）")
+            api = api2
+        _fix_value_links(api, wf)
         with self._lock:
             self.base[name] = api
         return copy.deepcopy(api)
@@ -231,6 +256,8 @@ class Registry:
                 "has_prompt": bool(c.get("prompt")),
                 "can_image": bool(c.get("images")),
                 "image_slots": len(c.get("images") or []),
+                "image_titles": c.get("image_titles") or [],
+                "video": (c.get("kind") == "视频"),
                 "size_mode": c.get("size_mode", "none"),
                 "can_seed": bool(c.get("sampler")),
                 "can_lora": bool(c.get("loras")),
@@ -275,6 +302,51 @@ def _first_text_node(nodes):
     return None
 
 
+OUTPUT_TYPES = ("SaveImage", "PreviewImage", "SaveVideo", "PreviewVideo",
+                "VHS_VideoCombine", "SaveAnimatedWEBP", "SaveAnimatedPNG")
+
+
+def _has_output(p):
+    """有没有真正的输出节点（用来判断这张图是不是被整张旁路了）"""
+    return any((n or {}).get("class_type") in OUTPUT_TYPES for n in p.values())
+
+
+def _fix_value_links(api, wf):
+    """把「连线指向纯前端值节点（rgthree Seed / PrimitiveFloat 等）」的输入改回字面量。
+
+    这类节点不会被转进 API prompt，留着连线 ComfyUI 会报 KeyError。
+    """
+    if "nodes" not in wf:
+        return api
+    values = {}
+    for nd in wf.get("nodes") or []:
+        nid = str(nd.get("id"))
+        if nid in api:
+            continue
+        wv = nd.get("widgets_values")
+        val = None
+        if isinstance(wv, list) and wv:
+            val = wv[0]
+        elif isinstance(wv, dict):
+            for k in ("value", "seed", "number", "int", "float"):
+                if k in wv:
+                    val = wv[k]
+                    break
+        if isinstance(val, (int, float, str)) and not isinstance(val, bool):
+            values[nid] = val
+    for n in api.values():
+        ins = n.get("inputs") or {}
+        for k, v in list(ins.items()):
+            if not (isinstance(v, list) and len(v) == 2):
+                continue
+            src = str(v[0])
+            if src in values:
+                ins[k] = values[src]
+            elif src not in api:
+                del ins[k]
+    return api
+
+
 def probe(p):
     """从 API 格式 prompt 里探测可操作的节点"""
     nodes = p
@@ -293,12 +365,14 @@ def probe(p):
         prompt_target = _first_text_node(nodes)
     caps["prompt"] = prompt_target
 
-    # 参考图位
-    for nid, n in nodes.items():
-        if n["class_type"] in ("LoadImage", "LoadImageMask"):
-            caps["images"].append((nid, "image"))
-    caps["image_list"] = [(nid, n["class_type"]) for nid, n in nodes.items()
-                          if n["class_type"] in ("LoadImage", "LoadImageMask")]
+    # 参考图位（按节点 id 排序，保证「首帧」排在「尾帧」前）
+    img_nodes = [(nid, n) for nid, n in nodes.items()
+                 if n["class_type"] in ("LoadImage", "LoadImageMask")]
+    img_nodes.sort(key=lambda kv: (0, int(kv[0])) if str(kv[0]).isdigit() else (1, str(kv[0])))
+    caps["images"] = [(nid, "image") for nid, _ in img_nodes]
+    caps["image_titles"] = [((n.get("_meta") or {}).get("title") or n["class_type"])
+                            for _, n in img_nodes]
+    caps["image_list"] = [(nid, n["class_type"]) for nid, n in img_nodes]
 
     # 尺寸
     for nid, n in nodes.items():
@@ -347,8 +421,21 @@ def apply_params(prompt, caps, *, text=None, image=None, images=None, aspect=Non
     # 参考图：优先用 images 列表（最多填满工作流里所有 LoadImage 位），兼容旧的单图 image
     names = [x for x in (images or []) if x] or ([image] if image else [])
     slots = caps.get("images") or []
+    bound = 0
     for (nid, key), name in zip(slots, names):
         prompt[nid]["inputs"][key] = name
+        bound += 1
+    # 图比 LoadImage 位多：给多出来的图各挂一个「加载图像」节点（LoadImage），
+    # 让它们确实被送进工作流（用户可在 ComfyUI 里把它们接到对应输入上）。
+    extras = names[len(slots):]
+    for i, name in enumerate(extras, 1):
+        nid = f"cw_ref_extra_{i}"
+        while nid in prompt:
+            nid += "_"
+        prompt[nid] = {"class_type": "LoadImage",
+                       "inputs": {"image": name, "upload": "image"},
+                       "_meta": {"title": f"参考图 {len(slots) + i}"}}
+        bound += 1
     if names:
         touched.append("image")
 
@@ -1166,11 +1253,15 @@ def submit_one(*, workflow, text, image=None, images=None, aspect, megapixels, w
     if res.get("node_errors"):
         raise ComfyError(200, json.dumps(res["node_errors"], ensure_ascii=False))
     pid = res["prompt_id"]
+    slots_n = len(caps.get("images") or [])
     item = {
         "id": pid, "prompt_id": pid, "workflow": workflow, "prompt": text,
         "aspect": aspect, "megapixels": megapixels, "width": width, "height": height,
         "seed": seed, "image": (names or [None])[0], "images": names, "status": "queued",
         "created": time.time(), "files": [], "origin": origin or "",
+        "image_slots": slots_n, "image_bound": min(len(names), slots_n),
+        "image_extra": max(0, len(names) - slots_n),
+        "kind": ("视频" if caps.get("kind") == "视频" else ""),
     }
     STORE.add(item)
     threading.Thread(target=watch, args=(pid,), daemon=True).start()
@@ -1359,6 +1450,12 @@ class Handler(BaseHTTPRequestHandler):
                     return
 
             if path == "/api/state":
+                vids = [n for n in (DEFAULTS.get("video_workflows") or [])
+                        if n in REG.names and REG.caps_of(n).get("ok")]
+                # 没配上的视频流程，退而用探测出来是「视频」的流程
+                if not vids:
+                    vids = [n for n in REG.names
+                            if REG.caps_of(n).get("ok") and REG.caps_of(n).get("kind") == "视频"]
                 return self._json({
                     "items": STORE.items,
                     "jobs": STORE.jobs,
@@ -1366,6 +1463,8 @@ class Handler(BaseHTTPRequestHandler):
                     "server": DEFAULTS["server"],
                     "workflows": REG.summary() if REG.names else [],
                     "default_workflow": DEFAULTS["default_workflow"],
+                    "video_workflows": vids,
+                    "only_favorites": bool(DEFAULTS.get("only_favorites", True)),
                 })
 
             if path == "/api/workflows":
@@ -1415,7 +1514,43 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": "missing filename"}, 400)
                 data = CLIENT.get("/api/view?" + urllib.parse.urlencode(
                     {"filename": fn, "subfolder": sub, "type": typ}))
-                return self._bytes(data, mimetypes.guess_type(fn)[0] or "image/png")
+                ctype = mimetypes.guess_type(fn)[0] or "image/png"
+                # 视频要能拖动进度：支持 Range（浏览器播 mp4 会先发 bytes=0-）
+                rng = (self.headers.get("Range") or "").strip()
+                total = len(data)
+                if rng.startswith("bytes=") and total:
+                    part = rng[6:].split(",")[0]
+                    a, _, b = part.partition("-")
+                    try:
+                        start = int(a) if a else 0
+                        end = int(b) if b else total - 1
+                    except ValueError:
+                        start, end = 0, total - 1
+                    end = min(end, total - 1)
+                    if start > end:
+                        start = 0
+                    chunk = data[start:end + 1]
+                    self.send_response(206)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{total}")
+                    self.send_header("Content-Length", str(len(chunk)))
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Cache-Control", "max-age=300")
+                    self._cors()
+                    self.end_headers()
+                    if self.command != "HEAD":
+                        self.wfile.write(chunk)
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(total))
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Cache-Control", "max-age=300")
+                self._cors()
+                self.end_headers()
+                if self.command != "HEAD":
+                    self.wfile.write(data)
+                return
 
             if path == "/api/share/state":
                 SHARE.start()
@@ -1528,7 +1663,11 @@ class Handler(BaseHTTPRequestHandler):
                     megapixels=p.get("megapixels"), width=p.get("width"), height=p.get("height"),
                     seed=p.get("seed"), lora=p.get("lora"), prefix="comfy_ui",
                     origin=self._origin())
-                return self._json({"prompt_id": pid})
+                it = next((i for i in STORE.items if i.get("prompt_id") == pid), {}) or {}
+                return self._json({"prompt_id": pid,
+                                   "image_slots": it.get("image_slots", 0),
+                                   "image_bound": it.get("image_bound", 0),
+                                   "image_extra": it.get("image_extra", 0)})
 
             if path == "/api/batch":
                 p = self._payload()

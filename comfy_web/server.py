@@ -1600,6 +1600,7 @@ class Handler(BaseHTTPRequestHandler):
                     "default_workflow": DEFAULTS["default_workflow"],
                     "video_workflows": vids,
                     "video_duration": DEFAULTS.get("video_duration"),
+                    "share_server": SHARE_BASE,
                     "only_favorites": bool(DEFAULTS.get("only_favorites", True)),
                 })
 

@@ -1370,11 +1370,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _bytes(self, data, ctype="application/octet-stream"):
+    def _bytes(self, data, ctype="application/octet-stream", cache="no-store"):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "max-age=300")
+        # 页面本身不缓存：改完 index.html 直接刷新就能看到新版本
+        self.send_header("Cache-Control", cache)
         self._cors()
         self.end_headers()
         self.wfile.write(data)

@@ -99,9 +99,11 @@ pwsh tools/publish.ps1 -Repo tinghai0724-cmd/huichuan-workbench -Message "首页
 ## 排版与交互
 
 - 纯黑底 + 琥珀金强调色，主色 `#023a91`，主按钮渐变 `#023a91 → #1f5cc0`
-- 侧栏：首页 / 资产库 / 生成 / 工作流 / 共享 / 状态
+- 侧栏：首页 / 资产库 / 生成 / 工作流 / 文档 / 共享 / 状态
 - 「生成」是左右分栏：左边生成过程卡片流，右边保留完整生成抽屉
 - 「工作流」内嵌原版 ComfyUI（`/comfy/*` 反代，自动代填 Basic Auth）
+- 只加载 ComfyUI 里**打了书签（星标）**的工作流：读 `userdata/workflows/.index.json` 的 `favorites`；`only_favorites: false` 可关掉（或环境变量 `CW_ONLY_FAVORITES=0`）改成全量。改完书签点 `POST /api/refresh-workflows` 即时重载，不用重启；书签里的流程若缺插件会单独标记为不可用，不影响其它流程。
+- 「文档」放词表/文案：xlsx、csv、tsv、txt、md、json、docx 解析成行，按行搜索、复制或一键填进生成对话框；pdf/doc/xls 只存原文不解析
 - 光标是双层的：光点跟手，光环缓动追赶；悬停控件放大、点击扩散涟漪；切页统一 0.34s 缓动入场
 
 ## 已知限制

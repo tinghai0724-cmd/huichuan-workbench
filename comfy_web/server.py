@@ -67,6 +67,11 @@ DEFAULTS = {
     "host": os.environ.get("CW_HOST") or _CFG.get("host") or "0.0.0.0",
     "default_workflow": _CFG.get("default_workflow") or "KOOK-Minimax-H3-image-尘星.json",
     "cors": os.environ.get("CW_CORS") or _CFG.get("cors") or "",
+    # 只加载 ComfyUI 里打了书签（收藏）的工作流；设 false 则加载全部
+    "only_favorites": (os.environ.get("CW_ONLY_FAVORITES") or "").lower()
+                      not in ("0", "false", "no")
+                      if (os.environ.get("CW_ONLY_FAVORITES") or "").strip()
+                      else bool(_CFG.get("only_favorites", True)),
 }
 
 DATA_DIR = os.path.join(HERE, "data")
@@ -99,9 +104,40 @@ class Registry:
         self._lock = threading.Lock()
 
     # ---------- 同步 ----------
+    def favorites(self):
+        """ComfyUI 工作流侧栏的书签（星标）：userdata/workflows/.index.json"""
+        try:
+            enc = urllib.parse.quote("workflows/.index.json", safe="")
+            data = self.client.get("/api/userdata/" + enc)
+            obj = data if isinstance(data, dict) else json.loads(data or "{}")
+            fav = obj.get("favorites") or []
+        except Exception:                        # noqa: BLE001
+            return None
+        names = []
+        for f in fav:
+            f = str(f)
+            if f.startswith("workflows/"):
+                f = f[len("workflows/"):]
+            if f.lower().endswith(".json"):
+                names.append(f)
+        return names
+
     def sync(self):
         data = self.client.get("/api/userdata?dir=workflows")
         rows = data if isinstance(data, list) else json.loads(data or "[]")
+        self.files = {}          # 每次同步都从零开始，避免切书签后残留旧条目
+        # 只加载 ComfyUI 里打了书签（收藏）的工作流；没有书签就回落到全部
+        if DEFAULTS.get("only_favorites", True):
+            fav = self.favorites()
+            if fav:
+                picked = [n for n in rows if n in fav]
+                if picked:
+                    rows = picked
+                    print(f"· 只加载书签工作流：{len(rows)} 个（共 {len(fav)} 个书签）")
+                else:
+                    print("· 书签里的工作流在 ComfyUI 上找不到，回落到全部")
+            else:
+                print("· 没有读到 ComfyUI 的工作流书签，回落到全部")
         wdir = DEFAULTS["workflow_dir"]
         for name in rows:
             path = os.path.join(wdir, name)
@@ -123,6 +159,10 @@ class Registry:
                     print(f"! 工作流下载失败 {name}: {e}")
             self.files[name] = path
         self.names = sorted(self.files, key=lambda s: s)
+        if self.names and DEFAULTS.get("default_workflow") not in self.names:
+            ok_names = [n for n in self.names if self.caps_of(n).get("ok")] or self.names
+            DEFAULTS["default_workflow"] = ok_names[0]
+            print(f"· 默认工作流改到书签里的 {ok_names[0]}")
         return self.names
 
     def ensure_oi(self):

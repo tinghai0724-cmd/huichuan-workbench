@@ -186,7 +186,6 @@
     color:#d8d8de;font-size:12px;cursor:pointer;backdrop-filter:blur(8px);transition:border-color .15s,transform .15s}
   .notice-btn:hover{border-color:#4b4b58;transform:translateY(-1px)}
   .notice-btn .nb-ic{font-size:13px}
-  .notice-btn .nb-dot{width:7px;height:7px;border-radius:50%;background:#ff5a5a;box-shadow:0 0 8px rgba(255,90,90,.7);margin-left:-2px}
   body.vmode .notice-btn{background:rgba(30,16,45,.9);border-color:#4a2b63;color:#f0dcff}
   .nt-mask{position:fixed;inset:0;z-index:62;display:none;place-items:center;padding:22px;background:rgba(0,0,0,.62);backdrop-filter:blur(3px)}
   .nt-mask.show{display:grid}
@@ -848,7 +847,7 @@
 <!-- 创作首页 -->
 <section id="homeView" class="show">
   <button type="button" class="notice-btn" id="noticeBtn" onclick="openNotice()" title="查看公告（可编辑，改动会同步到所有设备）">
-    <span class="nb-ic">📢</span><span>公告</span><i class="nb-dot" id="noticeDot" style="display:none"></i>
+    <span class="nb-ic">📢</span><span>公告</span>
   </button>
   <div class="home-scroll">
     <div class="home-hero">
@@ -2801,9 +2800,6 @@ function renderNotice(){
     const by = (NOTICE && NOTICE.by) ? NOTICE.by : '';
     meta.textContent = (when ? '更新于 ' + when : '—') + (by ? ' · ' + by : '');
   }
-  const dot = $('noticeDot');
-  const open = $('noticeMask') && $('noticeMask').classList.contains('show');
-  if(dot) dot.style.display = (isNoticeUnseen() && !open) ? '' : 'none';
 }
 
 async function loadNotice(){
@@ -2811,13 +2807,12 @@ async function loadNotice(){
     const j = await (await fetch('/api/notice')).json();
     if(j && j.error) return;
     NOTICE = j;
-    if(!noticeEditMode) renderNotice();   // 只更新红点，不自动弹窗；点「公告」才弹出
+    if(!noticeEditMode) renderNotice();   // 只刷新内容，不自动弹窗；点「公告」才弹出
   }catch(e){ /* 公告拉不到不影响主流程 */ }
 }
 
 function markNoticeSeen(){
   try{ if(NOTICE && NOTICE.updated) localStorage.setItem(NOTICE_SEEN, String(NOTICE.updated)); }catch(e){}
-  const dot = $('noticeDot'); if(dot) dot.style.display = 'none';
 }
 function openNotice(){
   noticeEditMode = false;

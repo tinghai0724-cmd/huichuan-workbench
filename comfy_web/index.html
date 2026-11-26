@@ -180,6 +180,30 @@
   .lib-item.on .lb-ck{background:#3f6bd8;border-color:#5b8cff;color:#fff}
   .lib-item .lb-v{position:absolute;top:7px;left:7px;font-size:10px;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.6);color:#ffd08a}
   .lib-foot{display:flex;align-items:center;gap:8px;padding:11px 16px;border-top:1px solid var(--line)}
+  /* ---------- 公告 ---------- */
+  .notice-btn{position:absolute;top:18px;right:26px;z-index:6;display:inline-flex;align-items:center;gap:7px;
+    padding:7px 13px;border-radius:99px;background:rgba(20,20,26,.86);border:1px solid #2e2e38;
+    color:#d8d8de;font-size:12px;cursor:pointer;backdrop-filter:blur(8px);transition:border-color .15s,transform .15s}
+  .notice-btn:hover{border-color:#4b4b58;transform:translateY(-1px)}
+  .notice-btn .nb-ic{font-size:13px}
+  .notice-btn .nb-dot{width:7px;height:7px;border-radius:50%;background:#ff5a5a;box-shadow:0 0 8px rgba(255,90,90,.7);margin-left:-2px}
+  body.vmode .notice-btn{background:rgba(30,16,45,.9);border-color:#4a2b63;color:#f0dcff}
+  .nt-mask{position:fixed;inset:0;z-index:62;display:none;place-items:center;padding:22px;background:rgba(0,0,0,.62);backdrop-filter:blur(3px)}
+  .nt-mask.show{display:grid}
+  .nt-panel{width:min(560px,94vw);max-height:82vh;display:flex;flex-direction:column;background:var(--panel);
+    border:1px solid #34343f;border-radius:16px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+  .nt-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)}
+  .nt-title{font-size:15px;color:var(--text)}
+  .nt-meta{font-size:11px;color:var(--dim);margin-top:3px}
+  .nt-body{padding:14px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:9px}
+  .nt-line{font-size:12.8px;line-height:1.72;color:#dcdce4;background:#14141a;border:1px solid #24242c;
+    border-radius:10px;padding:9px 12px}
+  .nt-edit{padding:14px 16px}
+  .nt-edit textarea{width:100%;min-height:150px;resize:vertical;background:#101014;border:1px solid #2c2c36;
+    border-radius:10px;padding:11px 12px;color:var(--text);font:inherit;font-size:12.8px;line-height:1.7;outline:none}
+  .nt-edit textarea:focus{border-color:#3d5a94}
+  .nt-foot{display:flex;align-items:center;gap:8px;padding:11px 16px;border-top:1px solid var(--line)}
+  .nt-tip{font-size:11px;color:var(--dim)}
 
   /* ---------- 文档页 ---------- */
   #docsView{position:fixed;left:76px;top:0;right:0;bottom:0;background:var(--bg);z-index:32;display:none;flex-direction:column}
@@ -813,6 +837,9 @@
 
 <!-- 创作首页 -->
 <section id="homeView" class="show">
+  <button type="button" class="notice-btn" id="noticeBtn" onclick="openNotice()" title="查看公告（可编辑，改动会同步到所有设备）">
+    <span class="nb-ic">📢</span><span>公告</span><i class="nb-dot" id="noticeDot" style="display:none"></i>
+  </button>
   <div class="home-scroll">
     <div class="home-hero">
       <div class="brand-big"><img id="homeBrand" alt="慧川"></div>
@@ -990,6 +1017,36 @@
       <div class="grow"></div>
       <button class="btn" onclick="closeLibShare()">取消</button>
       <button class="btn primary" id="libGo" onclick="doLibShare()">⇪ 分享所选</button>
+    </div>
+  </div>
+</div>
+
+<!-- 公告弹窗 -->
+<div class="nt-mask" id="noticeMask">
+  <div class="nt-panel">
+    <div class="nt-head">
+      <div>
+        <div class="nt-title">📢 公告</div>
+        <div class="nt-meta" id="noticeMeta">—</div>
+      </div>
+      <div class="grow"></div>
+      <button class="btn" onclick="closeNotice()">✕</button>
+    </div>
+    <div class="nt-body" id="noticeBody"></div>
+    <div class="nt-edit" id="noticeEdit" style="display:none">
+      <textarea id="noticeText" placeholder="一行一条，换行即换条"></textarea>
+    </div>
+    <div class="nt-foot" id="noticeFoot">
+      <span class="nt-tip">公告改动会实时同步到所有打开的设备</span>
+      <div class="grow"></div>
+      <button class="btn" onclick="startNoticeEdit()">✎ 编辑</button>
+      <button class="btn primary" onclick="ackNotice()">知道了</button>
+    </div>
+    <div class="nt-foot" id="noticeSaveFoot" style="display:none">
+      <span class="nt-tip" id="noticeSaveTip">保存后其它设备几秒内就会看到新内容</span>
+      <div class="grow"></div>
+      <button class="btn" onclick="cancelNoticeEdit()">取消</button>
+      <button class="btn primary" onclick="saveNoticeText()">保存并同步</button>
     </div>
   </div>
 </div>
@@ -1356,6 +1413,10 @@ async function boot(){
   hideLogin();
   if(st.default_user && $('lgUser')) $('lgUser').value=st.default_user;
   await load(); openHome(); health(); setInterval(health,12000); startAutoSync();
+  // 公告：打开就拉一次（有新内容自动弹窗），之后每 5 秒同步一次
+  loadNotice(true);
+  clearInterval(noticeTimer);
+  noticeTimer = setInterval(()=>loadNotice(false), 5000);
 }
 
 // ---------- 加载 ----------
@@ -2701,7 +2762,100 @@ function downloadImage(){
   if(!current||!(current.files||[])[0]) return;
   const a=document.createElement('a'); a.href=imgUrl(current.files[0]); a.download=current.files[0].filename; a.click();
 }
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeViewer();closeDrawer();closeDoc(); if(typeof closeLibShare==='function') closeLibShare();} });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeViewer();closeDrawer();closeDoc(); if(typeof closeLibShare==='function') closeLibShare(); if(typeof closeNotice==='function') closeNotice();} });
+
+/* ---------- 首页公告（弹窗 + 实时同步） ---------- */
+let NOTICE = null, noticeTimer = null, noticeEditMode = false;
+const NOTICE_SEEN = 'cw_notice_seen';
+
+function noticeLines(t){
+  return String(t || '').split('\n').map(s => s.trim()).filter(Boolean);
+}
+function noticeSeen(){ try{ return +(localStorage.getItem(NOTICE_SEEN) || 0); }catch(e){ return 0; } }
+function isNoticeUnseen(){ return !!(NOTICE && NOTICE.updated && NOTICE.updated > noticeSeen()); }
+
+function renderNotice(){
+  const body = $('noticeBody');
+  if(body){
+    const lines = noticeLines(NOTICE && NOTICE.text);
+    body.innerHTML = lines.length
+      ? lines.map(l => `<div class="nt-line">${escapeHtml(l)}</div>`).join('')
+      : `<div class="nt-line">（暂无公告）</div>`;
+  }
+  const meta = $('noticeMeta');
+  if(meta){
+    const when = (NOTICE && NOTICE.updated) ? fmtTime(NOTICE.updated) : '';
+    const by = (NOTICE && NOTICE.by) ? NOTICE.by : '';
+    meta.textContent = (when ? '更新于 ' + when : '—') + (by ? ' · ' + by : '');
+  }
+  const dot = $('noticeDot');
+  if(dot) dot.style.display = isNoticeUnseen() ? '' : 'none';
+}
+
+async function loadNotice(auto){
+  try{
+    const j = await (await fetch('/api/notice')).json();
+    if(j && j.error) return;
+    const changed = !NOTICE || j.updated !== NOTICE.updated;
+    NOTICE = j;
+    if(!noticeEditMode) renderNotice();
+    if(auto && changed && j.updated && isNoticeUnseen()) openNotice(true);
+  }catch(e){ /* 公告拉不到不影响主流程 */ }
+}
+
+function openNotice(auto){
+  $('noticeMask').classList.add('show');
+  noticeEditMode = false;
+  $('noticeEdit') && ($('noticeEdit').style.display = 'none');
+  $('noticeBody') && ($('noticeBody').style.display = '');
+  $('noticeFoot') && ($('noticeFoot').style.display = '');
+  $('noticeSaveFoot') && ($('noticeSaveFoot').style.display = 'none');
+  renderNotice();
+  loadNotice(false);
+}
+function closeNotice(){ $('noticeMask').classList.remove('show'); noticeEditMode = false; }
+function ackNotice(){
+  try{ if(NOTICE && NOTICE.updated) localStorage.setItem(NOTICE_SEEN, String(NOTICE.updated)); }catch(e){}
+  const dot = $('noticeDot'); if(dot) dot.style.display = 'none';
+  closeNotice();
+}
+function startNoticeEdit(){
+  noticeEditMode = true;
+  $('noticeText').value = (NOTICE && NOTICE.text) ? NOTICE.text : '';
+  $('noticeBody') && ($('noticeBody').style.display = 'none');
+  $('noticeEdit') && ($('noticeEdit').style.display = 'block');
+  $('noticeFoot') && ($('noticeFoot').style.display = 'none');
+  $('noticeSaveFoot') && ($('noticeSaveFoot').style.display = 'flex');
+  setTimeout(()=>{ try{ $('noticeText').focus(); }catch(e){} }, 50);
+}
+function cancelNoticeEdit(){
+  noticeEditMode = false;
+  $('noticeEdit') && ($('noticeEdit').style.display = 'none');
+  $('noticeBody') && ($('noticeBody').style.display = '');
+  $('noticeFoot') && ($('noticeFoot').style.display = '');
+  $('noticeSaveFoot') && ($('noticeSaveFoot').style.display = 'none');
+  renderNotice();
+}
+async function saveNoticeText(){
+  const text = ($('noticeText').value || '').replace(/\r\n/g, '\n').trim();
+  if(!text) return toast('公告不能为空', true);
+  const tip = $('noticeSaveTip'); if(tip) tip.textContent = '保存中…';
+  try{
+    const j = await (await fetch('/api/notice', { method: 'POST', headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ text }) })).json();
+    if(j.error) throw new Error(j.error);
+    NOTICE = j; noticeEditMode = false;
+    $('noticeEdit').style.display = 'none';
+    $('noticeBody').style.display = '';
+    $('noticeFoot').style.display = '';
+    $('noticeSaveFoot').style.display = 'none';
+    renderNotice();
+    toast('公告已保存，其它设备几秒内同步');
+  }catch(e){
+    toast('保存失败：' + e.message, true);
+    if(tip) tip.textContent = '保存后其它设备几秒内就会看到新内容';
+  }
+}
 
 /* ---------- 局域网共享（直接嵌入 192.168.0.172 的原生界面） ---------- */
 let shareData=null, shareTimer=null, shareBase='', shareFrameReady=false;

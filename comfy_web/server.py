@@ -112,6 +112,31 @@ DURATION_SOURCES = ("PrimitiveFloat", "PrimitiveInt", "PrimitiveNumber", "Float"
 
 _lock = threading.Lock()
 
+# ============================ 首页公告 ============================
+NOTICE_FILE = os.path.join(DATA_DIR, "notice.json")
+NOTICE_DEFAULT_TEXT = ("1. 视频生成建议在 1080p 的 1MP 像素点加载（耗时预计 16 分钟）\n"
+                       "2. 图片和视频尽量不要同时运行")
+
+
+def load_notice():
+    try:
+        with open(NOTICE_FILE, "r", encoding="utf-8") as f:
+            d = json.load(f) or {}
+    except Exception:                            # noqa: BLE001
+        d = {}
+    txt = d.get("text")
+    if not isinstance(txt, str) or not txt.strip():
+        txt = NOTICE_DEFAULT_TEXT
+    return {"text": txt, "updated": int(d.get("updated") or 0), "by": d.get("by") or ""}
+
+
+def save_notice(text, by=""):
+    d = {"text": (text or "").strip() or NOTICE_DEFAULT_TEXT,
+         "updated": int(time.time()), "by": by or ""}
+    with open(NOTICE_FILE, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+    return d
+
 
 # ============================ 工作流注册表 ============================
 class Registry:
@@ -1610,6 +1635,9 @@ class Handler(BaseHTTPRequestHandler):
                     "only_favorites": bool(DEFAULTS.get("only_favorites", True)),
                 })
 
+            if path == "/api/notice":
+                return self._json(load_notice())
+
             if path == "/api/workflows":
                 return self._json({"workflows": REG.summary()})
 
@@ -1917,6 +1945,11 @@ class Handler(BaseHTTPRequestHandler):
                     {"filename": fn, "subfolder": sub, "type": typ}))
                 SHARE.start()
                 return self._json(SHARE.upload(fn, data))
+
+            if path == "/api/notice":
+                p = self._payload()
+                sess = session_of(self.headers) or {}
+                return self._json(save_notice(p.get("text") or "", sess.get("user") or "匿名"))
 
             if path == "/api/share/push-batch":
                 # 资产库多选分享：一次把多张作品推到共享盘

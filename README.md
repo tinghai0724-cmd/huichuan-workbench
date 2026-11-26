@@ -107,6 +107,7 @@ pwsh tools/publish.ps1 -Repo tinghai0724-cmd/huichuan-workbench -Message "首页
 - `node_swaps` 可做节点替换：把跑不起来的节点换成语义等价的实现（默认 `MiniMaxH3MemoryEfficientSageAttentionPatch → MiniMaxLowVRAMAttention`，新节点缺的必填参数用 `object_info` 的默认值补齐）；配成 `{}` 关掉。
 - 「共享」页不再自己画文件列表，直接把 `share_server` 上那套原生界面（FileShare Pro）用 iframe 嵌进来：头部只留一行状态（地址 / 文件数 / 连接）和「＋ 分享作品」「↻ 刷新」「⇗ 新窗口」按钮；共享地址取 `/api/state` 的 `share_server`，没配就按当前主机名 + `:8080` 兜底。
 - 「＋ 分享作品」打开资产库多选弹层：只列已完成的作品（图 / 视频都带缩略图），可勾选、全选、清空，点「⇪ 分享所选」走 `POST /api/share/push-batch` 批量推到共享盘，成功后自动刷新 iframe 里的列表。资产库大图里的「⇪ 分享到局域网共享」仍是单张快分享（`/api/share/push`）。
+- 首页右上角有「📢 公告」：点开是弹窗，默认内容是「视频建议 1080p / 1MP（约 16 分钟）」和「图片视频不要同时跑」两条。弹窗里点「✎ 编辑」改文字（一行一条，换行即换条），保存走 `POST /api/notice` 存到 `comfy_web/data/notice.json`；各端每 5 秒轮询 `GET /api/notice`，改完几秒内所有人看到新内容，有新版本时红点提示并自动弹一次（「知道了」后同一版本不再打扰）
 - 「文档」放词表/文案：xlsx、csv、tsv、txt、md、json、docx 解析成行，按行搜索、复制或一键填进生成对话框；pdf/doc/xls 只存原文不解析
 - 首页 / 生成页有 **图像 / 视频** 模式开关：图像模式只列图像类流程（视频流程全部隐藏），视频模式只列 `video_workflows` 里的流程（默认 `minimax h3 图生视频`、`MINIMax H3 文生视频`、`minimax H3 首尾帧`），整站换成彩色主题——主按钮走 `紫→青→粉→橙` 渐变动画，首页铺一层低透明度动态彩色光斑
 - 视频模式下多一个「⏱ 时长」参数：档位由 `video_duration` 配置（默认 `5 / 10 / 15` 秒，受 MiniMax H3 限制），写进流程里 `PrimitiveFloat(秒)` 节点，后面的 `ComfyMathExpression` 负责折算成帧并对齐 17 帧音频块；流程没有时长节点时显示「时长固定」。首页快捷条、生成过程页底栏和「＋ 新建生成」抽屉里都有这个参数（抽屉里是按档位排的 5 / 10 / 15 秒按钮，换流程会回到该流程自己的默认秒数）

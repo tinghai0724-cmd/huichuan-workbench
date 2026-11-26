@@ -726,50 +726,37 @@
   .imgwrap{position:relative}
   .mediawrap{display:block;width:100%;height:100%;position:relative}
   .mediawrap img,.mediawrap video{width:100%;height:100%;object-fit:cover;display:block;border-radius:14px}
-  /* ---------- 启动页：黑蓝 → 浅蓝渐变过渡 ---------- */
-  #splash{position:fixed;inset:0;z-index:120;display:grid;place-items:center;overflow:hidden;
-    background:radial-gradient(125% 125% at 16% 10%, #07253f 0%, #04162a 34%, #010a14 68%, #00050a 100%);
-    transition:opacity .6s ease, visibility .6s ease}
-  #splash.out{opacity:0;visibility:hidden;pointer-events:none}
-  #splash .sp-blob{position:absolute;border-radius:50%;filter:blur(46px);mix-blend-mode:screen;opacity:.9}
-  #splash .b1{width:64vw;height:64vw;left:-16vw;top:-22vw;
+  /* ---------- AI 页启动页：黑蓝 → 浅蓝渐变过渡（只在 AI 页里出现） ---------- */
+  .ai-splash{position:absolute;inset:0;z-index:6;display:grid;place-items:center;overflow:hidden;
+    background:radial-gradient(125% 125% at 18% 12%, #07253f 0%, #04162a 36%, #010a14 70%, #00050a 100%);
+    transition:opacity .55s ease, visibility .55s ease}
+  .ai-splash.hide{opacity:0;visibility:hidden;pointer-events:none}
+  .ai-splash .sp-blob{position:absolute;border-radius:50%;filter:blur(40px);mix-blend-mode:screen;opacity:.92}
+  .ai-splash .b1{width:62%;height:70%;left:-18%;top:-34%;
     background:radial-gradient(closest-side,#1a86cf 0%,#0a3f68 58%,rgba(10,63,104,0) 74%);animation:spF1 13s ease-in-out infinite alternate}
-  #splash .b2{width:56vw;height:56vw;right:-14vw;bottom:-18vw;
-    background:radial-gradient(closest-side,#6fd2f2 0%,#116093 55%,rgba(17,96,147,0) 72%);opacity:.72;animation:spF2 16s ease-in-out infinite alternate}
-  #splash .b3{width:32vw;height:32vw;right:14vw;top:-10vw;
-    background:radial-gradient(closest-side,#a9ecff 0%,#2f9fd6 52%,rgba(47,159,214,0) 70%);opacity:.5;animation:spF3 11s ease-in-out infinite alternate}
-  @keyframes spF1{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(7vw,6vh,0) scale(1.14)}}
-  @keyframes spF2{from{transform:translate3d(0,0,0) scale(1.06)}to{transform:translate3d(-8vw,-7vh,0) scale(.9)}}
-  @keyframes spF3{from{transform:translate3d(0,0,0) rotate(0deg)}to{transform:translate3d(-5vw,8vh,0) rotate(20deg)}}
-  #splash .sp-sweep{position:absolute;inset:-30%;background:linear-gradient(112deg,rgba(255,255,255,0) 36%,rgba(140,222,255,.18) 50%,rgba(255,255,255,0) 64%);
+  .ai-splash .b2{width:56%;height:62%;right:-16%;bottom:-28%;
+    background:radial-gradient(closest-side,#6fd2f2 0%,#116093 55%,rgba(17,96,147,0) 72%);opacity:.7;animation:spF2 16s ease-in-out infinite alternate}
+  .ai-splash .b3{width:34%;height:40%;right:12%;top:-16%;
+    background:radial-gradient(closest-side,#a9ecff 0%,#2f9fd6 52%,rgba(47,159,214,0) 70%);opacity:.55;animation:spF3 11s ease-in-out infinite alternate}
+  @keyframes spF1{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(6vw,6vh,0) scale(1.12)}}
+  @keyframes spF2{from{transform:translate3d(0,0,0) scale(1.06)}to{transform:translate3d(-7vw,-6vh,0) scale(.92)}}
+  @keyframes spF3{from{transform:translate3d(0,0,0) rotate(0deg)}to{transform:translate3d(-4vw,7vh,0) rotate(18deg)}}
+  .ai-splash .sp-sweep{position:absolute;inset:-30%;background:linear-gradient(112deg,rgba(255,255,255,0) 36%,rgba(140,222,255,.16) 50%,rgba(255,255,255,0) 64%);
     animation:spSweep 5.6s linear infinite}
   @keyframes spSweep{0%{transform:translateX(-48%)}100%{transform:translateX(48%)}}
-  #splash .sp-core{position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;gap:13px}
-  #splash .sp-mark{width:74px;height:74px;border-radius:22px;display:grid;place-items:center;font-size:18px;font-weight:600;letter-spacing:2px;
+  .ai-splash .sp-core{position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;gap:11px}
+  .ai-splash .sp-mark{width:66px;height:66px;border-radius:20px;display:grid;place-items:center;font-size:17px;font-weight:600;letter-spacing:2px;
     color:#eaf7ff;background:linear-gradient(150deg,rgba(150,225,255,.3),rgba(8,54,98,.55));border:1px solid rgba(160,225,255,.45);
-    box-shadow:0 0 36px rgba(60,170,255,.32),inset 0 0 22px rgba(140,215,255,.24);animation:spPulse 3.4s ease-in-out infinite}
+    box-shadow:0 0 34px rgba(60,170,255,.32),inset 0 0 22px rgba(140,215,255,.24);animation:spPulse 3.4s ease-in-out infinite}
   @keyframes spPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
-  #splash .sp-name{font-size:13px;letter-spacing:7px;color:#e6f6ff;opacity:.92;text-indent:7px}
-  #splash .sp-sub{font-size:11.5px;letter-spacing:2px;color:#9fcbea;opacity:.8}
-  #splash .sp-bar{width:176px;height:3px;border-radius:99px;background:rgba(120,190,255,.16);overflow:hidden;margin-top:8px}
-  #splash .sp-bar i{display:block;height:100%;width:36%;border-radius:99px;background:linear-gradient(90deg,#379cdd,#b3e9ff);animation:spBar 1.6s ease-in-out infinite}
+  .ai-splash .sp-name{font-size:12.5px;letter-spacing:6px;color:#e6f6ff;opacity:.92;text-indent:6px}
+  .ai-splash .sp-sub{font-size:11.5px;letter-spacing:1.5px;color:#9fcbea;opacity:.8}
+  .ai-splash .sp-bar{width:168px;height:3px;border-radius:99px;background:rgba(120,190,255,.16);overflow:hidden;margin-top:6px}
+  .ai-splash .sp-bar i{display:block;height:100%;width:36%;border-radius:99px;background:linear-gradient(90deg,#379cdd,#b3e9ff);animation:spBar 1.6s ease-in-out infinite}
   @keyframes spBar{0%{transform:translateX(-108%)}100%{transform:translateX(318%)}}
 </style>
 </head>
 <body>
-<!-- 启动页：黑蓝 → 浅蓝渐变过渡 -->
-<div id="splash">
-  <div class="sp-blob b1"></div>
-  <div class="sp-blob b2"></div>
-  <div class="sp-blob b3"></div>
-  <div class="sp-sweep"></div>
-  <div class="sp-core">
-    <div class="sp-mark">慧川</div>
-    <div class="sp-name">HUICHUAN</div>
-    <div class="sp-sub">正在载入工作台…</div>
-    <div class="sp-bar"><i></i></div>
-  </div>
-</div>
 <!-- 登录 -->
 <div id="loginView">
   <div class="lg-card">
@@ -1068,7 +1055,19 @@
   <div class="sv-frame-wrap">
     <iframe id="aiFrame" class="sv-frame" src="about:blank" title="局域网 AI 聊天"
             allow="clipboard-read; clipboard-write; fullscreen; microphone" onload="aiFrameLoaded()"></iframe>
-    <div class="sv-frame-mask" id="aiMask">正在连接 AI 聊天平台…</div>
+    <!-- AI 页专属启动页：黑蓝 → 浅蓝渐变过渡，加载完淡出 -->
+    <div class="ai-splash" id="aiSplash">
+      <div class="sp-blob b1"></div>
+      <div class="sp-blob b2"></div>
+      <div class="sp-blob b3"></div>
+      <div class="sp-sweep"></div>
+      <div class="sp-core">
+        <div class="sp-mark">慧川</div>
+        <div class="sp-name">AI 交流台</div>
+        <div class="sp-sub" id="aiSplashTip">正在连接 192.168.0.126:8081 …</div>
+        <div class="sp-bar"><i></i></div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -1488,7 +1487,7 @@ async function boot(){
   initBrandFX();
   initCursorFX();
   const st=await fetchLoginStatus();
-  if(!st || !st.authed){ showLogin(st||null); hideSplash(420); return; }
+  if(!st || !st.authed){ showLogin(st||null); return; }
   hideLogin();
   if(st.default_user && $('lgUser')) $('lgUser').value=st.default_user;
   await load(); openHome(); health(); setInterval(health,12000); startAutoSync();
@@ -1498,7 +1497,6 @@ async function boot(){
   loadNotice();
   clearInterval(noticeTimer);
   noticeTimer = setInterval(loadNotice, 5000);
-  hideSplash(620);
 }
 
 // ---------- 加载 ----------
@@ -3058,9 +3056,9 @@ function openAI(){
   $('aiView').classList.add('show');
   setNav('navAI');
   animView($('aiView'));
-  const fr=$('aiFrame'), m=$('aiMask');
+  const fr=$('aiFrame');
   if(fr && (!aiFrameReady || fr.src==='about:blank' || fr.src.indexOf(aiUiBase())<0)){
-    if(m) m.classList.remove('hide');
+    aiSplashShow();
     fr.src=aiUiUrl();
   }
   checkAI();
@@ -3069,18 +3067,31 @@ function openAI(){
 }
 function closeAI(){ showLibrary(); }
 function reloadAIUI(){
-  const fr=$('aiFrame'), m=$('aiMask');
+  const fr=$('aiFrame');
   aiFrameReady=false;
-  if(m) m.classList.remove('hide');
+  aiSplashShow();
   if(fr){ fr.src='about:blank'; setTimeout(()=>{ fr.src=aiUiUrl(); }, 40); }
   checkAI();
 }
 function openAIUI(){ window.open(aiUiUrl(), '_blank', 'noopener'); }
+/* AI 页专属启动页：连上就淡出 */
+let aiSplashTimer=null;
+function aiSplashShow(){
+  const s=$('aiSplash'), tip=$('aiSplashTip');
+  if(tip) tip.textContent='正在连接 '+aiUiBase().replace(/^https?:\/\//,'')+' …';
+  if(s) s.classList.remove('hide');
+  clearTimeout(aiSplashTimer);
+  aiSplashTimer=setTimeout(()=>{ const el=$('aiSplash'); if(el) el.classList.add('hide'); }, 15000); // 兜底
+}
+function aiSplashHide(){
+  clearTimeout(aiSplashTimer);
+  const s=$('aiSplash'); if(s) s.classList.add('hide');
+}
 function aiFrameLoaded(){
   const fr=$('aiFrame');
   if(!fr || fr.src==='about:blank') return;
   aiFrameReady=true;
-  const m=$('aiMask'); if(m) m.classList.add('hide');
+  aiSplashHide();
 }
 async function checkAI(){
   const dot=$('aiDot'), srv=$('aiSrv'), net=$('aiNet');
@@ -3095,19 +3106,6 @@ async function checkAI(){
     if(dot) dot.className='dot';
     if(srv) srv.textContent='离线';
   }
-}
-
-/* ---------- 启动页 ---------- */
-let splashDone=false;
-function hideSplash(delay){
-  if(splashDone) return;
-  splashDone=true;
-  const s=$('splash');
-  if(!s) return;
-  setTimeout(()=>{
-    s.classList.add('out');
-    setTimeout(()=>{ if(s.parentNode) s.parentNode.removeChild(s); }, 700);
-  }, delay||0);
 }
 
 function fmtSize(b){
@@ -3236,7 +3234,6 @@ async function doLibShare(){
 setMode('single'); syncMpLabel(); updateQuickEst(); applyViewMode();
 try{ const u=localStorage.getItem('cw_user'); if(u) $('lgUser').value=u; }catch(e){}
 boot();
-setTimeout(()=>hideSplash(0), 8000);   // 兜底：启动异常也不让启动页卡住
 </script>
 </body>
 </html>

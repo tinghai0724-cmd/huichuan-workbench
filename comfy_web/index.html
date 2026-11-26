@@ -523,8 +523,9 @@
   /* 自定义光标/光环/涟漪样式已全部移除，使用系统光标 */
 
   /* 视图切换缓动 */
-  @keyframes viewIn{from{opacity:.25;transform:translateY(10px) scale(.992)}to{opacity:1;transform:none}}
-  .view-anim{animation:viewIn .34s cubic-bezier(.22,.86,.3,1) both}
+  /* 页面切换：只做轻微缩放 + 亮度过渡，全程不透明，避免旧页面（资产库）透过闪烁 */
+  @keyframes viewIn{from{transform:scale(1.012);filter:brightness(.9)}to{transform:none;filter:none}}
+  .view-anim{animation:viewIn .28s cubic-bezier(.22,.86,.3,1) both}
   .gen-wrap{flex:1;display:flex;flex-direction:column;padding:10px 26px 14px;min-height:0;overflow:hidden}
   .gen-top{display:flex;align-items:center;gap:10px;padding-bottom:8px;flex:none}
   .gen-top .cap{font-size:11.5px;color:#8f97a8;border:1px solid #23262e;border-radius:999px;padding:4px 10px}
@@ -1899,12 +1900,17 @@ function quickGen(){
   if(t) homeGenerate(); else { const p=$('homePrompt'); if(p) p.focus(); }
 }
 
+const NAV_VIEW={navHome:'homeView',navGen:'genView',navFlow:'flowView',navDocs:'docsView',navShare:'shareView',navAI:'aiView'};
+function hideAllPages(keepId){
+  ['homeView','genView','flowView','docsView','shareView','aiView'].forEach(id=>{
+    const e=$(id); if(e && id!==keepId) e.classList.remove('show');
+  });
+}
 function setNav(id){
   ['navHome','navLib','navShare','navGen','navFlow','navDocs','navAI'].forEach(k=>{ const e=$(k); if(e) e.classList.remove('active'); });
   const e=$(id); if(e) e.classList.add('active');
-  // 切到别的页面时自动收起 AI 页（AI 页是全屏 iframe，不跟着走）
-  const ai=$('aiView');
-  if(ai && id!=='navAI') ai.classList.remove('show');
+  // 页面互斥：一次只允许一个全屏页出现，避免切换时旧页（含资产库）闪一下再回来
+  hideAllPages(NAV_VIEW[id] || null);
 }
 
 /* ---------- 文档库 ---------- */

@@ -1070,6 +1070,12 @@
       <div class="row" id="ratioRow"></div>
     </div>
 
+    <div class="field" id="durField" style="display:none">
+      <label>视频时长 <span class="lbadge" id="durFieldBadge">5 / 10 / 15 秒</span></label>
+      <div class="row" id="durRow"></div>
+      <div class="tip" id="durFieldNote" style="display:none">这张工作流的时长是固定的，不支持调节</div>
+    </div>
+
     <div class="field" id="mpField">
       <label>画质像素：<span id="mpLabel" style="color:var(--text)">2.0 MP</span></label>
       <input type="range" class="range" id="mp" min="0.2" max="4" step="0.1" value="1" oninput="syncMpLabel()">
@@ -1438,6 +1444,14 @@ function syncDurUI(){
   ['homeDurWrap','gcDurWrap'].forEach(id=>{ const el=$(id); if(el) el.style.display = vid?'inline-flex':'none'; });
   ['homeDur','gcDur'].forEach(id=>{ const el=$(id); if(el) el.style.display = supported?'':'none'; });
   ['homeDurNote','gcDurNote'].forEach(id=>{ const el=$(id); if(el) el.style.display = (vid&&!supported)?'':'none'; });
+  // 抽屉「新建生成」里的时长：只在视频模式出现
+  const dF=$('durField');
+  if(dF) dF.style.display = vid?'':'none';
+  const dRow=$('durRow'), dNote=$('durFieldNote'), dBadge=$('durFieldBadge');
+  if(dRow) dRow.style.display = supported?'flex':'none';
+  if(dNote) dNote.style.display = (vid&&!supported)?'block':'none';
+  const cfg0=durCfg();
+  if(dBadge) dBadge.textContent = cfg0.presets.map(s=>(+s).toFixed(0)).join(' / ')+' 秒';
   if(!supported) return;
   if(durForWf!==WF_NAME){                       // 换流程就回到它自己的工作流默认秒数
     const dv=(c.duration_default!=null)? +c.duration_default : durCfg().presets[0];
@@ -1445,6 +1459,23 @@ function syncDurUI(){
   }
   fillDurOptions();
   ['homeDur','gcDur'].forEach(id=>{ const el=$(id); if(el) el.value=String(curDuration); });
+  renderDurChips();
+}
+/* 抽屉里的时长按钮：按 video_duration 的档位生成，选中高亮 */
+function renderDurChips(){
+  const row=$('durRow'); if(!row) return;
+  const cfg=durCfg();
+  const want=cfg.presets.map(s=>`${(+s).toFixed(0)}s`).join(',');
+  if(row.dataset.p!==want){
+    row.dataset.p=want;
+    row.innerHTML=cfg.presets.map(s=>{
+      const v=(+s).toFixed(0);
+      return `<button type="button" class="chip" data-d="${v}" onclick="setDurationFrom(${v})">${v} 秒</button>`;
+    }).join('');
+  }
+  [...row.querySelectorAll('[data-d]')].forEach(b=>{
+    b.classList.toggle('on', +b.dataset.d === +(curDuration||0));
+  });
 }
 function fillDurOptions(){
   const cfg=durCfg();
@@ -1463,6 +1494,7 @@ function setDurationFrom(v){
   s=Math.max(cfg.min, Math.min(cfg.max, s));
   curDuration=s;
   ['homeDur','gcDur'].forEach(id=>{ const el=$(id); if(el) el.value=String(s); });
+  renderDurChips();
   toast(`视频时长 ${s.toFixed(0)} 秒`);
 }
 
@@ -2537,10 +2569,12 @@ function openGenSplit(){
   openGenView();
   setSplit(true);
   if($('drawerTitle')) $('drawerTitle').textContent='新建生成';
+  syncDurUI();
 }
 function openDrawer(){
   setSplit(false);
   $('mask').classList.add('show'); $('drawer').classList.add('show');
+  syncDurUI();
 }
 function closeDrawer(){
   const split = $('drawer').classList.contains('split');

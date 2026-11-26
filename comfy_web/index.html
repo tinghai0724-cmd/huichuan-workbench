@@ -1424,6 +1424,8 @@ async function boot(){
   hideLogin();
   if(st.default_user && $('lgUser')) $('lgUser').value=st.default_user;
   await load(); openHome(); health(); setInterval(health,12000); startAutoSync();
+  // 后端把端口先起来、工作流在后台同步：列表为空就自动等它同步完
+  if(!((STATE && STATE.workflows) || []).length) waitWorkflows();
   // 公告：打开就拉一次（有新内容自动弹窗），之后每 5 秒同步一次
   loadNotice();
   clearInterval(noticeTimer);
@@ -1431,6 +1433,24 @@ async function boot(){
 }
 
 // ---------- 加载 ----------
+let wfWaitTimer=null, wfWaitN=0;
+function waitWorkflows(){
+  clearInterval(wfWaitTimer); wfWaitN=0;
+  toast('正在同步工作流，稍候…');
+  wfWaitTimer=setInterval(async ()=>{
+    wfWaitN++;
+    try{ await fetch('/api/refresh-workflows',{method:'POST',body:'{}'}); }catch(e){}
+    try{ await load(); }catch(e){}
+    const n=((STATE && STATE.workflows) || []).length;
+    if(n){
+      clearInterval(wfWaitTimer); wfWaitTimer=null;
+      toast(`工作流已同步（${n} 个）`);
+    }else if(wfWaitN>=30){
+      clearInterval(wfWaitTimer); wfWaitTimer=null;
+      toast('工作流还没同步到，可点「↻ 刷新」重试',true);
+    }
+  }, 6000);
+}
 async function load(){
   const r=await fetch('/api/state');
   if(r.status===401){ showLogin(null); return; }

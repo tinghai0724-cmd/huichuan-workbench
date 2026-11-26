@@ -172,6 +172,15 @@ class Registry:
         return names
 
     def sync(self):
+        """同步工作流；ComfyUI 卡住时用短超时快速失败，别把启动拖死"""
+        old = getattr(self.client, "timeout", 180)
+        self.client.timeout = min(old, 12)
+        try:
+            return self._sync_inner()
+        finally:
+            self.client.timeout = old
+
+    def _sync_inner(self):
         data = self.client.get("/api/userdata?dir=workflows")
         rows = data if isinstance(data, list) else json.loads(data or "[]")
         self.files = {}          # 每次同步都从零开始，避免切书签后残留旧条目
@@ -1995,13 +2004,24 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def bootstrap():
+    # ComfyUI 刚开机/正忙时第一次同步常常失败，这里重试几次，别留下空列表
+    names = []
+    for attempt in range(1, 6):
+        try:
+            names = REG.sync() or []
+        except Exception as e:                   # noqa: BLE001
+            print(f"! 工作流同步失败（第 {attempt} 次）：{type(e).__name__}: {e}")
+        else:
+            if names:
+                break
+            print(f"! 第 {attempt} 次同步没有拿到工作流，稍后重试")
+        time.sleep(8)
+    print(f"· 已同步工作流 {len(names)} 个")
     try:
-        names = REG.sync()
-        print(f"· 已同步工作流 {len(names)} 个")
         REG.ensure_oi()
         REG.warm()
     except Exception as e:                       # noqa: BLE001
-        print(f"! 工作流同步失败：{e}")
+        print(f"! 预热失败：{e}")
     try:
         SHARE.start()
         print(f"· 共享服务已接入：{SHARE.base}（身份 {SHARE.name}）")
@@ -2046,9 +2066,10 @@ def main():
     ap.add_argument("--open", action="store_true")
     args = ap.parse_args()
 
-    bootstrap()
-    threading.Thread(target=reconcile_stale, daemon=True).start()
+    # 先占住端口再后台预热：ComfyUI 卡住/关掉也不影响工作台自身启动
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
+    threading.Thread(target=bootstrap, daemon=True).start()
+    threading.Thread(target=reconcile_stale, daemon=True).start()
     url = f"http://127.0.0.1:{args.port}"
     print(f"· 工作台已启动: {url}   （监听 {args.host}:{args.port}，后端 {DEFAULTS['server']}）")
     for ip in lan_ips():

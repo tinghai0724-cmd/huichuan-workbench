@@ -926,6 +926,24 @@ DOCS = DocStore()
 # ============================ 局域网共享（FileShare Pro）============================
 SHARE_BASE = os.environ.get("SHARE_SERVER") or _CFG.get("share_server") or ""
 
+# 局域网 AI 聊天平台（嵌在前端「AI」页里）
+AI_BASE = (os.environ.get("AI_SERVER") or _CFG.get("ai_server")
+           or "http://192.168.0.126:8081").rstrip("/")
+
+
+def probe_ai(base=None, timeout=3.0):
+    """探测 AI 聊天平台是否在线"""
+    base = (base or AI_BASE).rstrip("/")
+    t0 = time.time()
+    try:
+        req = urllib.request.Request(base + "/", method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return {"ok": True, "url": base, "status": r.status,
+                    "ms": int((time.time() - t0) * 1000)}
+    except Exception as e:                                    # noqa: BLE001
+        return {"ok": False, "url": base, "error": str(e),
+                "ms": int((time.time() - t0) * 1000)}
+
 
 class ShareHub:
     """以一个在线成员身份连到 FileShare Pro，缓存它的实时状态并提供操作"""
@@ -1641,8 +1659,12 @@ class Handler(BaseHTTPRequestHandler):
                     "video_workflows": vids,
                     "video_duration": DEFAULTS.get("video_duration"),
                     "share_server": SHARE_BASE,
+                    "ai_server": AI_BASE,
                     "only_favorites": bool(DEFAULTS.get("only_favorites", True)),
                 })
+
+            if path == "/api/ai/state":
+                return self._json(probe_ai())
 
             if path == "/api/notice":
                 return self._json(load_notice())

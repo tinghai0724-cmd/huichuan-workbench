@@ -109,7 +109,7 @@ pwsh tools/publish.ps1 -Repo tinghai0724-cmd/huichuan-workbench -Message "首页
 - 「共享」页不再自己画文件列表，直接把 `share_server` 上那套原生界面（FileShare Pro）用 iframe 嵌进来：头部只留一行状态（地址 / 文件数 / 连接）和「＋ 分享作品」「↻ 刷新」「⇗ 新窗口」按钮；共享地址取 `/api/state` 的 `share_server`，没配就按当前主机名 + `:8080` 兜底。
 - 「＋ 分享作品」打开资产库多选弹层：只列已完成的作品（图 / 视频都带缩略图），可勾选、全选、清空，点「⇪ 分享所选」走 `POST /api/share/push-batch` 批量推到共享盘，成功后自动刷新 iframe 里的列表。资产库大图里的「⇪ 分享到局域网共享」仍是单张快分享（`/api/share/push`）。
 - 首页右上角有「📢 公告」：点开是弹窗，默认内容是「视频建议 1080p / 1MP（约 16 分钟）」和「图片视频不要同时跑」两条。弹窗里点「✎ 编辑」可以一条一个文本域地改、删、以及「＋ 添加一条公告」，保存走 `POST /api/notice` 存到 `comfy_web/data/notice.json`；各端每 5 秒轮询 `GET /api/notice`，改完几秒内所有人看到新内容（不自动弹窗、不显示红点，点按钮才看）
-- 侧栏新增「AI」页：直接 iframe 嵌局域网 AI 聊天平台（默认 `http://192.168.0.126:8081`，配置项 `ai_server`，可用 `AI_SERVER` 环境变量覆盖）。头部只有地址、`GET /api/ai/state` 探活（在线 + 延迟）和「↻ 刷新」「⇗ 新窗口」；切到别的页面会自动收起。8081 那边的「慧川 AI 交流台」已按 `dsh-claude-style` 主题（Claude Code Desktop 视觉语言）换肤：象牙白 / 暖黑双底色 + 陶土橙强调色 + 无衬线正文/衬线标题/等宽代码，右上角 ☾/☀ 一键切明暗并记忆。
+- 侧栏新增「AI」页：直接 iframe 嵌局域网 AI 聊天平台（默认 `http://192.168.0.126:8081`，配置项 `ai_server`，可用 `AI_SERVER` 环境变量覆盖）。头部只有地址、`GET /api/ai/state` 探活（在线 + 延迟）和「↻ 刷新」「⇗ 新窗口」；切到别的页面会自动收起。8081 那边的「慧川 AI 交流台」已按 `dsh-claude-style` 主题（Claude Code Desktop 视觉语言）换肤：冰蓝白 / 墨蓝黑双底色 + 品牌蓝强调色（`#4D6BFE`，暗底 `#1D2028`、浅底 `#F4F9FF`、侧栏 `#EEF1F8`、次级蓝 `#8FA4FF`）+ 无衬线正文/衬线标题/等宽代码，右上角 ☾/☀ 一键切明暗并记忆。
 - 点侧栏「AI」先进一层 AI 专属启动页：黑蓝 → 浅蓝的渐变光斑过渡 `#aiSplash`（只在 AI 页里出现，别的页面没有），iframe 加载完成自动淡出，15 秒兜底。
 - 「文档」放词表/文案：xlsx、csv、tsv、txt、md、json、docx 解析成行，按行搜索、复制或一键填进生成对话框；pdf/doc/xls 只存原文不解析
 - 首页 / 生成页有 **图像 / 视频** 模式开关：图像模式只列图像类流程（视频流程全部隐藏），视频模式只列 `video_workflows` 里的流程（默认 `minimax h3 图生视频`、`MINIMax H3 文生视频`、`minimax H3 首尾帧`），整站换成彩色主题——主按钮走 `紫→青→粉→橙` 渐变动画，首页铺一层低透明度动态彩色光斑
@@ -119,6 +119,8 @@ pwsh tools/publish.ps1 -Repo tinghai0724-cmd/huichuan-workbench -Message "首页
 - 视频结果在卡片 / 生成流 / 大图里都按视频播放（`/api/img` 支持 Range，可拖动进度条）
 - 种子：抽屉里留空即按 `-1` 提交（ComfyUI 的「随机」语义，占位提示也写着「留空 = -1（随机）」）。`-1` 在 API 里不合法，后端会换成同一颗随机正整数，并同时写进采样器和 `RandomNoise` 的 `noise_seed`；手填种子则全流程统一用这个值，可复现。
 - 工作流里被旁路（mode=4）的节点，转换 API 时按 ComfyUI 的旁路语义把同类型输入透传给下游（否则 `SageAttentionPatch` 一类直通节点旁路后会断掉 `model` 连线、提交 400）
+- 「加图即生成」的流程（有图像位、没有提示词通道，如 `BiRefNet-产品抠图`）：首页标签直接写「·加图即生成」，提示词框改成说明文案、生成按钮变绿；点「加图生成」或直接点生成若还没图，会自动拉起选图，选好就能跑，不需要写提示词
+- 新版 ComfyUI 的**子图（subgraph）**工作流：转换 API 时会把子图节点就地展开，按同名插槽把子图输入/输出接回外层，内部节点 id 统一加 `外层id:` 前缀（`BiRefNet-产品抠图` 就是这种结构，展开后 `LoadImage → RemoveBackground → InvertMask → JoinImageWithAlpha → PreviewImage` 连线完整）
 - 用系统默认光标（早期那套「跟随光点 + 蓝色缓动圆环 + 点击涟漪」已移除）
 
 ## 已知限制

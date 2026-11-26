@@ -424,7 +424,7 @@
     .wf-chip{max-width:none}
   }
   .wf-chip.dis{opacity:.32;cursor:not-allowed}
-  .wf-chip.needimg{border-color:rgba(224,138,24,.38)}
+  .wf-chip.needimg{border-color:rgba(31,157,122,.42)}
   .qbox{width:min(780px,100%);background:#0b0b0c;border:1px solid #26262a;border-radius:18px;padding:16px 18px 14px;transition:.18s}
   .qbox:focus-within{border-color:rgba(79,131,224,.65);box-shadow:0 0 0 3px rgba(2,58,145,.28)}
   .qbox textarea{width:100%;background:none;border:none;outline:none;resize:none;min-height:100px;font-size:13.5px;line-height:1.8;color:#f4f4f5;font-family:inherit}
@@ -484,6 +484,10 @@
   .qgen{height:38px;padding:0 22px;border-radius:11px;background:linear-gradient(135deg,#023a91,#1f5cc0);color:#fff;font-weight:700;font-size:13.5px;border:none;cursor:pointer;font-family:inherit;white-space:nowrap;transition:.15s}
   .qgen:hover{filter:brightness(1.12)}
   .qgen:disabled{opacity:.5;cursor:not-allowed;filter:none}
+  .qgen.imgonly{background:linear-gradient(135deg,#0f7a63,#1f9d7a)}
+  .qgen.imgonly.ready{box-shadow:0 0 0 3px rgba(47,196,152,.28),0 8px 26px rgba(31,157,122,.28)}
+  @keyframes genNudge{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+  .qgen.nudge{animation:genNudge .5s ease}
   .home-tip{font-size:11px;color:#5f5f68}
   .sec-title{font-size:16px;font-weight:700;margin:10px 0 2px}
   .hero{border-radius:18px;border-color:#26262a;padding:20px 22px;min-height:148px}
@@ -2248,12 +2252,12 @@ function renderHomeWfChips(){
     return;
   }
   chips.innerHTML = list.map(w=>{
-    const need = w.can_image && w.has_prompt===false;   // 必须给参考图的流程
+    const need = w.can_image && w.has_prompt===false;   // 加图即生成的流程（无提示词通道）
     const label = (w.label||w.name).replace('.json','').replace(/^[【▶▷\s]+/,'');
     const ic = (w.kind==='视频') ? '🎬 ' : '';
     return `<button class="wf-chip ${w.name===WF_NAME?'on':''}${w.ok?'':' dis'}${need?' needimg':''}"
-    data-n="${escapeHtml(w.name)}" title="${escapeHtml((w.label||w.name)+(need?'（必须给参考图）':''))}"
-    ${w.ok?`onclick="setWfFrom(this.dataset.n)"`:'disabled'}>${ic}${escapeHtml(label)}${need?' ·需图':''}</button>`;
+    data-n="${escapeHtml(w.name)}" title="${escapeHtml((w.label||w.name)+(need?'（加一张图即可生成，不需要提示词）':''))}"
+    ${w.ok?`onclick="setWfFrom(this.dataset.n)"`:'disabled'}>${ic}${escapeHtml(label)}${need?' ·加图即生成':''}</button>`;
   }).join('');
 }
 
@@ -2287,6 +2291,18 @@ function syncHomeWfUI(){
   if(sel && sel.value!==WF_NAME && [...sel.options].some(o=>o.value===WF_NAME)) sel.value=WF_NAME;
   const chips=$('homeWfChips');
   if(chips) [...chips.children].forEach(c=>c.classList.toggle('on', c.dataset.n===WF_NAME));
+  // 无提示词通道的流程（如 BiRefNet 抠图）：加一张图就能生成，提示语与按钮跟着变
+  const io = isImageOnlyWf(WF_NAME);
+  const p=$('homePrompt');
+  if(p) p.placeholder = io
+    ? '这个流程不需要提示词 · 把图片加到「参考图」里，点生成就出图'
+    : '描述你想生成的画面，例如：蓝紫色赛博风夜景，霓虹灯，超广角构图';
+  const g=$('homeGen');
+  if(g && !g.disabled){
+    g.textContent = OUT_MODE==='video' ? '🎬 生成视频' : (io ? '✦ 加图生成' : '✦ 生成');
+    g.classList.toggle('imgonly', io && OUT_MODE!=='video');
+    g.classList.toggle('ready', io && refImages.length>0);
+  }
   updateQuickEst();
   updateHomeRef();
   if(typeof syncGenUI==='function') syncGenUI();
@@ -2463,7 +2479,15 @@ async function addRefFiles(files){
       updateHomeRef();
     }catch(err){ toast('上传失败：'+err.message,true); }
   }
-  if(refImages.length) toast(`已添加 ${refImages.length} 张参考图`);
+  if(refImages.length){
+    if(isImageOnlyWf(WF_NAME)){
+      const g=$('homeGen');
+      if(g){ g.classList.add('ready'); g.classList.remove('nudge'); void g.offsetWidth; g.classList.add('nudge'); setTimeout(()=>g.classList.remove('nudge'),600); }
+      toast('图片已就位 · 点「加图生成」就出图（不用写提示词）');
+    }else{
+      toast(`已添加 ${refImages.length} 张参考图`);
+    }
+  }
 }
 $('homeFileInput').addEventListener('change', async e=>{
   await addRefFiles(e.target.files);
@@ -2475,7 +2499,11 @@ async function homeGenerate(){
   const c=capsOf(WF_NAME);
   if(!t && c.has_prompt!==false) return toast('先描述你想生成的画面',true);
   if(!t && !refImages.length) return toast('先写提示词，或至少加一张参考图',true);
-  if(needsImage(WF_NAME) && !refImages.length){ refPillState(); return toast('「'+(c.label||WF_NAME)+'」必须给参考图，点「参考图」加上',true); }
+  if(needsImage(WF_NAME) && !refImages.length){
+    refPillState();
+    homePickRef();   // 这类流程「加图即生成」：直接拉起选图，选完点生成就出图
+    return toast('「'+(c.label||WF_NAME)+'」加一张图就能生成，已打开选图',true);
+  }
   if(c.kind==='视频' && (c.image_slots||0)>refImages.length){
     refPillState();
     return toast(`「${c.label||WF_NAME}」要 ${c.image_slots} 张参考图${c.image_slots>1?'（首帧 / 尾帧）':''}，现在只有 ${refImages.length} 张`,true);
@@ -2569,6 +2597,17 @@ function renderThread(fresh){
 function syncGenUI(){
   const sel=$('gcWf');
   if(sel && [...sel.options].some(o=>o.value===WF_NAME) && sel.value!==WF_NAME) sel.value=WF_NAME;
+  const io=isImageOnlyWf(WF_NAME);
+  const gp=$('gcPrompt');
+  if(gp) gp.placeholder = io
+    ? '这个流程不需要提示词 · 加一张图就能生成（可继续补充说明，可不填）'
+    : '继续描述你想生成的画面，Enter 直接生成';
+  const gg=$('gcGen');
+  if(gg && !gg.disabled){
+    gg.textContent = io ? '✦ 加图生成' : '✦ 生成';
+    gg.classList.toggle('imgonly', io && OUT_MODE!=='video');
+    gg.classList.toggle('ready', io && refImages.length>0);
+  }
   fillRatioSelects();
   syncMpEverywhere();
   updateHomeRef();
@@ -2657,7 +2696,11 @@ async function genGenerate(){
   const c=capsOf(WF_NAME);
   if(!t && c.has_prompt!==false) return toast('先描述你想生成的画面',true);
   if(!t && !refImages.length) return toast('先写提示词，或至少加一张参考图',true);
-  if(needsImage(WF_NAME) && !refImages.length){ refPillState(); return toast('「'+(c.label||WF_NAME)+'」必须给参考图，点「参考图」加上',true); }
+  if(needsImage(WF_NAME) && !refImages.length){
+    refPillState();
+    homePickRef();
+    return toast('「'+(c.label||WF_NAME)+'」加一张图就能生成，已打开选图',true);
+  }
   if(c.kind==='视频' && (c.image_slots||0)>refImages.length){
     refPillState();
     return toast(`「${c.label||WF_NAME}」要 ${c.image_slots} 张参考图${c.image_slots>1?'（首帧 / 尾帧）':''}，现在只有 ${refImages.length} 张`,true);
@@ -2788,6 +2831,8 @@ function needsImage(wf){
   const c=capsOf(wf||WF_NAME);
   return !!(c && c.can_image && c.has_prompt===false);
 }
+// 「加图即生成」的流程：有图像位、没有提示词通道（BiRefNet 抠图等），只要加图就能跑
+function isImageOnlyWf(wf){ return needsImage(wf); }
 // 把后端长串 JSON 报错压成一句人话
 function fmtErr(e){
   let raw=(e && e.message) ? e.message : String(e||'');

@@ -50,14 +50,28 @@ def is_ui_only(ntype):
     return ntype in UI_ONLY_TYPES or "(rgthree)" in ntype
 
 
+def _norm_sub_link(l):
+    """子图定义里的连线可能是 [id,o,os,t,ts,type] 老格式，也可能是 {id,origin_id,...} 新格式"""
+    if isinstance(l, dict):
+        return [l.get("id"), l.get("origin_id"), l.get("origin_slot"),
+                l.get("target_id"), l.get("target_slot"), l.get("type")]
+    if isinstance(l, (list, tuple)) and len(l) >= 5:
+        return [l[0], l[1], l[2], l[3], l[4], l[5] if len(l) > 5 else None]
+    return None
+
+
 def _expand_subgraphs(ui):
-    """把新版 ComfyUI 的子图节点（type 是 uuid）就地展开成扁平图"""
+    """把新版 ComfyUI 的子图节点（type 是 uuid）就地展开成扁平图
+
+    子图定义里 -10 是输入节点、-20 是输出节点；这里把子图的输入/输出按
+    外层的同名插槽接回去，内部连线统一加 `外层节点id:` 前缀，保证转换后连线完整。
+    """
     defs = {sg.get("id"): sg for sg in ((ui.get("definitions") or {}).get("subgraphs") or [])}
     if not defs:
         return ui
 
     nodes = [dict(n) for n in ui.get("nodes") or []]
-    links = [list(l) for l in (ui.get("links") or [])]
+    links = [l for l in (_norm_sub_link(x) for x in (ui.get("links") or [])) if l]
 
     for _ in range(6):
         pending = [n for n in nodes if n.get("type") in defs]
@@ -65,6 +79,7 @@ def _expand_subgraphs(ui):
             break
         link_by_id = {l[0]: l for l in links}
         out_nodes, out_links = [], list(links)
+        outer_remap = {}
 
         for n in nodes:
             sg = defs.get(n.get("type"))
@@ -78,23 +93,41 @@ def _expand_subgraphs(ui):
                             "outputs": [dict(s) for s in (x.get("outputs") or [])]}
                            for x in sg.get("nodes") or []]
             remap = {}
+            sg_in = sg.get("inputs") or []
+            sg_out = sg.get("outputs") or []
+            n_in = n.get("inputs") or []
+            n_out = n.get("outputs") or []
 
-            for li in sg.get("links") or []:
+            for li in (_norm_sub_link(x) for x in (sg.get("links") or [])):
+                if not li:
+                    continue
                 lid, oid, oslot, tid, tslot, ltype = li
-                if oid == -10:                              # 子图输入 → 上游节点
-                    slot = [s for s in (n.get("inputs") or []) if s.get("link") is not None]
-                    up_id = n["inputs"][oslot]["link"] if oslot < len(n.get("inputs") or []) else None
-                    up = link_by_id.get(up_id)
+                if oid == -10:                              # 子图输入 → 内部节点
+                    if not isinstance(oslot, int) or oslot >= len(sg_in):
+                        continue
+                    name = (sg_in[oslot] or {}).get("name")
+                    sock = next((s for s in n_in
+                                 if s.get("name") == name and s.get("link") is not None), None)
+                    if sock is None and oslot < len(n_in) and n_in[oslot].get("link") is not None:
+                        sock = n_in[oslot]
+                    if sock is None:
+                        continue           # 该输入是控件值（proxyWidget），不接外部线
+                    up = link_by_id.get(sock["link"])
                     if not up:
                         continue
                     nid = f"{prefix}in{lid}"
                     out_links.append([nid, up[1], up[2], prefix + str(tid), tslot, ltype])
                     remap[lid] = nid
-                elif tid == -20:                            # 子图输出 → 下游节点
-                    for pl in links:
-                        if pl[1] == n["id"] and pl[2] == tslot:
-                            nid = f"{prefix}out{lid}_{pl[0]}"
-                            out_links.append([nid, prefix + str(oid), oslot, pl[3], pl[4], ltype])
+                elif tid == -20:                            # 内部节点 → 子图输出
+                    if not isinstance(tslot, int) or tslot >= len(n_out):
+                        continue
+                    for olid in (n_out[tslot].get("links") or []):
+                        ol = link_by_id.get(olid)
+                        if not ol:
+                            continue
+                        nid = f"{prefix}out{lid}_{olid}"
+                        out_links.append([nid, prefix + str(oid), oslot, ol[3], ol[4], ltype])
+                        outer_remap[olid] = nid
                 else:                                       # 子图内部连线
                     nid = f"{prefix}l{lid}"
                     out_links.append([nid, prefix + str(oid), oslot, prefix + str(tid), tslot, ltype])
@@ -102,14 +135,19 @@ def _expand_subgraphs(ui):
 
             for node in inner_nodes:
                 for sock in node["inputs"]:
-                    if sock.get("link") is not None and sock["link"] in remap:
+                    if sock.get("link") in remap:
                         sock["link"] = remap[sock["link"]]
             out_nodes.extend(inner_nodes)
 
-        # 丢掉指向/来自子图节点本身的旧连线
+        # 丢掉指向/来自子图节点本身的旧连线，并把外部节点上的旧连线号换成新号
         sub_ids = {n["id"] for n in pending}
         out_links = [l for l in out_links
                      if not (l[1] in sub_ids or l[3] in sub_ids)]
+        if outer_remap:
+            for node in out_nodes:
+                for sock in node.get("inputs") or []:
+                    if sock.get("link") in outer_remap:
+                        sock["link"] = outer_remap[sock["link"]]
         nodes, links = out_nodes, out_links
 
     return {"nodes": nodes, "links": links}

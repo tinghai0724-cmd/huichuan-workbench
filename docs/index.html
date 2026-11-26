@@ -198,10 +198,20 @@
   .nt-body{padding:14px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:9px}
   .nt-line{font-size:12.8px;line-height:1.72;color:#dcdce4;background:#14141a;border:1px solid #24242c;
     border-radius:10px;padding:9px 12px}
-  .nt-edit{padding:14px 16px}
-  .nt-edit textarea{width:100%;min-height:150px;resize:vertical;background:#101014;border:1px solid #2c2c36;
-    border-radius:10px;padding:11px 12px;color:var(--text);font:inherit;font-size:12.8px;line-height:1.7;outline:none}
-  .nt-edit textarea:focus{border-color:#3d5a94}
+  .nt-edit{padding:14px 16px;display:flex;flex-direction:column;gap:9px;overflow-y:auto;max-height:58vh}
+  .nt-list{display:flex;flex-direction:column;gap:8px}
+  .nt-row{display:flex;align-items:flex-start;gap:7px}
+  .nt-row .nt-no{width:20px;flex:0 0 auto;text-align:right;font-size:11.5px;color:var(--dim);padding-top:9px}
+  .nt-row textarea{flex:1;min-height:52px;resize:vertical;background:#101014;border:1px solid #2c2c36;
+    border-radius:9px;padding:8px 10px;color:var(--text);font:inherit;font-size:12.6px;line-height:1.65;outline:none}
+  .nt-row textarea:focus{border-color:#3d5a94}
+  .nt-del{flex:0 0 auto;width:26px;height:26px;margin-top:6px;border-radius:8px;border:1px solid #3a2430;
+    background:#1b1218;color:#e08a86;cursor:pointer;font-size:12px;line-height:1}
+  .nt-del:hover{background:#2a161d;border-color:#6b3340}
+  .nt-add{align-self:flex-start;padding:7px 12px;border-radius:9px;border:1px dashed #3a3a46;background:transparent;
+    color:#a9bce4;font-size:12px;cursor:pointer}
+  .nt-add:hover{border-color:#4b6ea8;color:#cfdcff}
+  .nt-hintline{font-size:11px;color:var(--dim)}
   .nt-foot{display:flex;align-items:center;gap:8px;padding:11px 16px;border-top:1px solid var(--line)}
   .nt-tip{font-size:11px;color:var(--dim)}
 
@@ -1034,7 +1044,9 @@
     </div>
     <div class="nt-body" id="noticeBody"></div>
     <div class="nt-edit" id="noticeEdit" style="display:none">
-      <textarea id="noticeText" placeholder="一行一条，换行即换条"></textarea>
+      <div class="nt-list" id="noticeEditList"></div>
+      <button type="button" class="nt-add" onclick="addNoticeItem()">＋ 添加一条公告</button>
+      <div class="nt-hintline">每条一段话；保存会对所有设备生效</div>
     </div>
     <div class="nt-foot" id="noticeFoot">
       <span class="nt-tip">公告改动会实时同步到所有打开的设备</span>
@@ -1415,9 +1427,9 @@ async function boot(){
   if(st.default_user && $('lgUser')) $('lgUser').value=st.default_user;
   await load(); openHome(); health(); setInterval(health,12000); startAutoSync();
   // 公告：打开就拉一次（有新内容自动弹窗），之后每 5 秒同步一次
-  loadNotice(true);
+  loadNotice();
   clearInterval(noticeTimer);
-  noticeTimer = setInterval(()=>loadNotice(false), 5000);
+  noticeTimer = setInterval(loadNotice, 5000);
 }
 
 // ---------- 加载 ----------
@@ -2766,7 +2778,7 @@ function downloadImage(){
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeViewer();closeDrawer();closeDoc(); if(typeof closeLibShare==='function') closeLibShare(); if(typeof closeNotice==='function') closeNotice();} });
 
 /* ---------- 首页公告（弹窗 + 实时同步） ---------- */
-let NOTICE = null, noticeTimer = null, noticeEditMode = false;
+let NOTICE = null, noticeTimer = null, noticeEditMode = false, noticeDraft = [];
 const NOTICE_SEEN = 'cw_notice_seen';
 
 function noticeLines(t){
@@ -2790,44 +2802,72 @@ function renderNotice(){
     meta.textContent = (when ? '更新于 ' + when : '—') + (by ? ' · ' + by : '');
   }
   const dot = $('noticeDot');
-  if(dot) dot.style.display = isNoticeUnseen() ? '' : 'none';
+  const open = $('noticeMask') && $('noticeMask').classList.contains('show');
+  if(dot) dot.style.display = (isNoticeUnseen() && !open) ? '' : 'none';
 }
 
-async function loadNotice(auto){
+async function loadNotice(){
   try{
     const j = await (await fetch('/api/notice')).json();
     if(j && j.error) return;
-    const changed = !NOTICE || j.updated !== NOTICE.updated;
     NOTICE = j;
-    if(!noticeEditMode) renderNotice();
-    if(auto && changed && j.updated && isNoticeUnseen()) openNotice(true);
+    if(!noticeEditMode) renderNotice();   // 只更新红点，不自动弹窗；点「公告」才弹出
   }catch(e){ /* 公告拉不到不影响主流程 */ }
 }
 
-function openNotice(auto){
-  $('noticeMask').classList.add('show');
+function markNoticeSeen(){
+  try{ if(NOTICE && NOTICE.updated) localStorage.setItem(NOTICE_SEEN, String(NOTICE.updated)); }catch(e){}
+  const dot = $('noticeDot'); if(dot) dot.style.display = 'none';
+}
+function openNotice(){
   noticeEditMode = false;
   $('noticeEdit') && ($('noticeEdit').style.display = 'none');
   $('noticeBody') && ($('noticeBody').style.display = '');
   $('noticeFoot') && ($('noticeFoot').style.display = '');
   $('noticeSaveFoot') && ($('noticeSaveFoot').style.display = 'none');
-  renderNotice();
-  loadNotice(false);
+  $('noticeMask').classList.add('show');
+  loadNotice().then(() => { renderNotice(); markNoticeSeen(); });   // 取最新再渲染，看过即消红点
 }
 function closeNotice(){ $('noticeMask').classList.remove('show'); noticeEditMode = false; }
-function ackNotice(){
-  try{ if(NOTICE && NOTICE.updated) localStorage.setItem(NOTICE_SEEN, String(NOTICE.updated)); }catch(e){}
-  const dot = $('noticeDot'); if(dot) dot.style.display = 'none';
-  closeNotice();
-}
+function ackNotice(){ markNoticeSeen(); closeNotice(); }
 function startNoticeEdit(){
   noticeEditMode = true;
-  $('noticeText').value = (NOTICE && NOTICE.text) ? NOTICE.text : '';
+  noticeDraft = noticeLines(NOTICE && NOTICE.text);
+  if(!noticeDraft.length) noticeDraft = [''];
+  renderNoticeEdit();
   $('noticeBody') && ($('noticeBody').style.display = 'none');
-  $('noticeEdit') && ($('noticeEdit').style.display = 'block');
+  $('noticeEdit') && ($('noticeEdit').style.display = 'flex');
   $('noticeFoot') && ($('noticeFoot').style.display = 'none');
   $('noticeSaveFoot') && ($('noticeSaveFoot').style.display = 'flex');
-  setTimeout(()=>{ try{ $('noticeText').focus(); }catch(e){} }, 50);
+  setTimeout(()=>{ const box=$('noticeEditList'); const el=box && box.querySelector('.nt-in'); if(el) el.focus(); }, 50);
+}
+/* 编辑态：一条一个文本域，可删可加 */
+function renderNoticeEdit(){
+  const box = $('noticeEditList');
+  if(!box) return;
+  if(!noticeDraft.length) noticeDraft = [''];
+  box.innerHTML = noticeDraft.map((t, i) => `<div class="nt-row">
+      <span class="nt-no">${i + 1}.</span>
+      <textarea class="nt-in" rows="2" placeholder="写一条公告，例如：视频生成建议在 1080p 的 1MP 像素点加载（耗时预计 16 分钟）">${escapeHtml(t)}</textarea>
+      <button type="button" class="nt-del" title="删除第 ${i + 1} 条" onclick="removeNoticeItem(${i})">✕</button>
+    </div>`).join('');
+}
+function collectNoticeDraft(){
+  const box = $('noticeEditList');
+  if(!box) return noticeDraft.slice();
+  return [...box.querySelectorAll('.nt-in')].map(el => el.value);
+}
+function addNoticeItem(){
+  noticeDraft = collectNoticeDraft();
+  noticeDraft.push('');
+  renderNoticeEdit();
+  const inputs = $('noticeEditList').querySelectorAll('.nt-in');
+  if(inputs.length) inputs[inputs.length - 1].focus();
+}
+function removeNoticeItem(i){
+  noticeDraft = collectNoticeDraft();
+  noticeDraft.splice(i, 1);
+  renderNoticeEdit();
 }
 function cancelNoticeEdit(){
   noticeEditMode = false;
@@ -2838,8 +2878,9 @@ function cancelNoticeEdit(){
   renderNotice();
 }
 async function saveNoticeText(){
-  const text = ($('noticeText').value || '').replace(/\r\n/g, '\n').trim();
-  if(!text) return toast('公告不能为空', true);
+  const lines = collectNoticeDraft().map(s => s.trim()).filter(Boolean);
+  if(!lines.length) return toast('公告不能为空，至少留一条', true);
+  const text = lines.join('\n');
   const tip = $('noticeSaveTip'); if(tip) tip.textContent = '保存中…';
   try{
     const j = await (await fetch('/api/notice', { method: 'POST', headers: { 'Content-Type':'application/json' },
@@ -2851,7 +2892,7 @@ async function saveNoticeText(){
     $('noticeFoot').style.display = '';
     $('noticeSaveFoot').style.display = 'none';
     renderNotice();
-    toast('公告已保存，其它设备几秒内同步');
+    toast(`公告已保存（${lines.length} 条），其它设备几秒内同步`);
   }catch(e){
     toast('保存失败：' + e.message, true);
     if(tip) tip.textContent = '保存后其它设备几秒内就会看到新内容';
@@ -2859,6 +2900,10 @@ async function saveNoticeText(){
 }
 
 /* ---------- 局域网共享（直接嵌入 192.168.0.172 的原生界面） ---------- */
+document.addEventListener('click', e=>{
+  const m = $('noticeMask');
+  if(m && m.classList.contains('show') && e.target === m && !noticeEditMode) closeNotice();
+});
 let shareData=null, shareTimer=null, shareBase='', shareFrameReady=false;
 
 function shareUiBase(){

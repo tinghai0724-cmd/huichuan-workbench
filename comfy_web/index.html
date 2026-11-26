@@ -852,9 +852,10 @@
         </div>
         <div class="qslide">
           <span class="qs-ic">◲</span>
-          <input type="range" id="homeMp" min="0" max="13" step="1" value="9" oninput="onHomeMp(this.value)" title="生成像素大小">
+          <input type="range" id="homeMp" min="0" max="17" step="1" value="9" oninput="onHomeMp(this.value)" title="生成像素大小">
           <span class="qs-val" id="homeMpText">1.0 MP · 1344 × 768</span>
         </div>
+        <div class="qs-hint" id="homeMpHint" style="display:none">4.0 MP 属于大图，生成耗时可能较长（建议先用小一档试效果）</div>
         <div class="qs-hint" id="homeSizeHint" style="display:none"></div>
       </div>
       <input type="file" id="homeFileInput" accept="image/*" multiple style="display:none">
@@ -920,9 +921,10 @@
         </div>
         <div class="qslide">
           <span class="qs-ic">◲</span>
-          <input type="range" id="gcMp" min="0" max="13" step="1" value="9" oninput="onHomeMp(this.value)" title="生成像素大小">
+          <input type="range" id="gcMp" min="0" max="17" step="1" value="9" oninput="onHomeMp(this.value)" title="生成像素大小">
           <span class="qs-val" id="gcMpText">1.0 MP · 1344 × 768</span>
         </div>
+        <div class="qs-hint" id="gcMpHint" style="display:none">4.0 MP 属于大图，生成耗时可能较长（建议先用小一档试效果）</div>
         <div class="qs-hint" id="gcSizeHint" style="display:none"></div>
       </div>
     </div>
@@ -1070,14 +1072,14 @@
 
     <div class="field" id="mpField">
       <label>画质像素：<span id="mpLabel" style="color:var(--text)">2.0 MP</span></label>
-      <input type="range" class="range" id="mp" min="0.2" max="2" step="0.1" value="1" oninput="syncMpLabel()">
+      <input type="range" class="range" id="mp" min="0.2" max="4" step="0.1" value="1" oninput="syncMpLabel()">
       <div class="tip">模型按 2048×2048 面积调优；16G 显存建议 2–4 MP。</div>
     </div>
 
     <div class="inline">
       <div class="field">
         <label>种子</label>
-        <input type="text" id="seed" placeholder="留空则随机">
+        <input type="text" id="seed" placeholder="留空 = -1（随机）">
       </div>
       <div class="field" id="loraField">
         <label>LoRA 权重</label>
@@ -1173,15 +1175,16 @@ window.fetch = function(u,opt){
   if(cross) opt.credentials = 'include';
   return _nativeFetch(url, opt);
 };
-// 画幅比例：按参考截图给的 7 项（去掉 1:1，新增 21:9）
+// 画幅比例：7 项（1:1 替代原先的 2:3，保留 21:9）
 const RATIOS = [
-  ['2:3 (Portrait Photo)','2:3'],['3:2 (Photo)','3:2'],
+  ['1:1 (Square)','1:1'],['3:2 (Photo)','3:2'],
   ['3:4 (Portrait Standard)','3:4'],['4:3 (Standard)','4:3'],
   ['9:16 (Portrait Widescreen)','9:16'],['16:9 (Widescreen)','16:9'],
   ['21:9 (Ultrawide)','21:9']
 ];
-// 像素档位：对齐参考截图的 14 档（multiple = 32）
-const MP_STEPS=[0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.98,1.0,1.2,1.5,1.8,2.0];
+// 像素档位：0.2–4.0 MP（multiple = 32），4.0 会提示耗时
+const MP_STEPS=[0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.98,1.0,1.2,1.5,1.8,2.0,2.5,3.0,3.5,4.0];
+const MP_MAX = 4.0;
 let STATE={items:[],jobs:{},workflows:[],default_workflow:''};
 let filter='all', ratioFilter='all', mode='single', current=null, pollTimer=null;
 // 参考图：最多 5 张，refImages 存 ComfyUI input 里的文件名，refUrls 存本地预览用的 objectURL
@@ -2120,11 +2123,14 @@ function nearestMpIdx(v){
   return MP_STEPS.reduce((best,x,i)=>Math.abs(x-mp)<Math.abs(MP_STEPS[best]-mp)?i:best,0);
 }
 function syncMpEverywhere(){
-  const mpVal = +(($('mp')&&$('mp').value)||1);
+  const mpVal = Math.min(MP_MAX, +(($('mp')&&$('mp').value)||1));
   const idx = nearestMpIdx(mpVal);
   ['homeMp','gcMp'].forEach(id=>{ const el=$(id); if(el && +el.value!==idx) el.value=idx; });
   ['homeMpText','gcMpText'].forEach(id=>{ const el=$(id); if(el) el.textContent=mpLabelText(mpVal); });
   if($('mpLabel')) $('mpLabel').textContent=mpLabelText(mpVal);
+  // 4MP 提醒：只在支持尺寸调节的流程上显示
+  const big = mpVal>=MP_MAX-0.001 && (!WF_NAME || sizeSupported());
+  ['homeMpHint','gcMpHint'].forEach(id=>{ const el=$(id); if(el) el.style.display = big?'block':'none'; });
   updateQuickEst();
   if(typeof syncSizeUI==='function') syncSizeUI();
 }
@@ -2133,6 +2139,7 @@ function onHomeMp(idx){
   $('mp').value = v;
   ['homeMp','gcMp'].forEach(id=>{ const el=$(id); if(el) el.value=+idx; });
   syncMpEverywhere();
+  if(v>=MP_MAX-0.001) toast('已切到 4.0 MP 大图，生成耗时可能较长');
 }
 function cycleMp(){
   const cur=+($('mp').value||1);
@@ -2565,8 +2572,8 @@ function payloadBase(){
   return {
     workflow: WF_NAME,
     aspect: c.size_mode!=='none' ? curRatio : null,
-    megapixels: c.size_mode!=='none' ? +$('mp').value : null,
-    seed: $('seed').value.trim() || null,
+    megapixels: c.size_mode!=='none' ? Math.min(MP_MAX, +$('mp').value) : null,
+    seed: $('seed').value.trim() || -1,   // 留空即 -1（ComfyUI 的随机语义）
     image: refImages[0]||null,
     images: refImages.slice(),
     lora: $('lora').value.trim() || null,
@@ -2644,9 +2651,9 @@ function closeViewer(){
 viewer.onclick=e=>{ if(e.target===viewer) closeViewer(); };
 async function rerun(){
   if(!current) return;
-  const seed=prompt('新的种子（留空=随机）','');
+  const seed=prompt('新的种子（留空 = -1 随机）','');
   const j=await (await fetch('/api/rerun',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({prompt_id:current.prompt_id, seed: seed===''?null:seed})})).json();
+    body:JSON.stringify({prompt_id:current.prompt_id, seed:(seed===null||seed.trim()==='')?-1:seed})})).json();
   if(j.error) return toast('失败：'+j.error,true);
   toast('已重新提交'); closeViewer(); await load();
 }

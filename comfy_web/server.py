@@ -100,7 +100,7 @@ RECORDS = os.path.join(DATA_DIR, "records.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(DEFAULTS["workflow_dir"], exist_ok=True)
 
-RATIOS = ["2:3 (Portrait Photo)", "3:2 (Photo)", "3:4 (Portrait Standard)",
+RATIOS = ["1:1 (Square)", "3:2 (Photo)", "3:4 (Portrait Standard)",
           "4:3 (Standard)", "9:16 (Portrait Widescreen)", "16:9 (Widescreen)",
           "21:9 (Ultrawide)"]
 
@@ -558,31 +558,37 @@ def apply_params(prompt, caps, *, text=None, image=None, images=None, aspect=Non
             n["width"], n["height"] = w, h
             touched.append("size")
 
-    if seed is not None and caps.get("sampler"):
-        ins = prompt[caps["sampler"]]["inputs"]
-        if "seed" in ins and not isinstance(ins["seed"], list):
-            ins["seed"] = int(seed)
-            touched.append("seed")
-        elif "noise_seed" in ins and not isinstance(ins["noise_seed"], list):
-            ins["noise_seed"] = int(seed)
-            touched.append("seed")
+    # 种子：留空 / -1 都按 ComfyUI 的「随机」语义处理（API 里 -1 不合法，必须换成正整数）
+    try:
+        seed = int(seed) if seed is not None and str(seed).strip() != "" else None
+    except (TypeError, ValueError):
+        seed = None
+    seed_rnd = secrets.randbelow(2 ** 31 - 1)
+    eff_seed = seed_rnd if (seed is None or seed < 0) else seed
 
-    # 种子：负数（ComfyUI 里「随机」的 -1）在 API 里不合法，统一换成合法随机值；
-    # 指定了种子时也灌给 RandomNoise 这类 noise_seed 节点，保证可复现
+    if caps.get("sampler"):
+        ins = prompt[caps["sampler"]]["inputs"]
+        for k in ("seed", "noise_seed"):
+            if k in ins and not isinstance(ins[k], list):
+                ins[k] = int(eff_seed)
+                if "seed" not in touched:
+                    touched.append("seed")
+                break
+
+    # 其余带 seed/noise_seed 的节点（如 RandomNoise）：指定了种子就统一写同一个，
+    # 随机模式则把残留的负数洗成同一颗随机种子
     for nid, n in prompt.items():
         ins = n.get("inputs") or {}
         for k in ("seed", "noise_seed"):
             v = ins.get(k)
             if isinstance(v, list) or not isinstance(v, int) or isinstance(v, bool):
                 continue
-            if seed is not None and (k == "noise_seed" or v < 0):
+            if seed is not None and seed >= 0:
                 ins[k] = int(seed)
-                if "seed" not in touched:
-                    touched.append("seed")
             elif v < 0:
-                ins[k] = secrets.randbelow(2 ** 31 - 1)
-                if "seed" not in touched:
-                    touched.append("seed")
+                ins[k] = int(seed_rnd)
+            if "seed" not in touched:
+                touched.append("seed")
 
     # 视频时长（秒）：写值节点，ComfyMathExpression 会把它换算成帧数
     if duration is not None and caps.get("duration"):

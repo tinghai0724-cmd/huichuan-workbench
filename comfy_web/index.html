@@ -3091,7 +3091,7 @@ let aiBase='', aiFrameReady=false, aiTimer=null;
 function aiUiBase(){
   if(aiBase) return aiBase.replace(/\/+$/,'');
   try{
-    const h=location.hostname||'192.168.0.126';
+    const h=location.hostname||'192.168.0.152';
     return 'http://'+h+':8081';
   }catch(e){ return 'http://192.168.0.152:8081'; }
 }

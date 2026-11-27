@@ -928,7 +928,7 @@ SHARE_BASE = os.environ.get("SHARE_SERVER") or _CFG.get("share_server") or ""
 
 # 局域网 AI 聊天平台（嵌在前端「AI」页里）
 AI_BASE = (os.environ.get("AI_SERVER") or _CFG.get("ai_server")
-           or "http://192.168.0.126:8081").rstrip("/")
+           or "http://192.168.0.152:8081").rstrip("/")
 
 
 def probe_ai(base=None, timeout=3.0):

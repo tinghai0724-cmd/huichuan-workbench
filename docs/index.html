@@ -1042,13 +1042,13 @@
   </div>
 </section>
 
-<!-- AI 页：直接嵌入局域网 AI 聊天平台（192.168.0.126:8081） -->
+<!-- AI 页：直接嵌入局域网 AI 聊天平台（192.168.0.152:8081） -->
 <section id="aiView">
   <div class="sv-head">
     <div>
       <div class="title">AI</div>
       <div class="sub">
-        <span class="cap" id="aiNet">192.168.0.126:8081</span>
+        <span class="cap" id="aiNet">192.168.0.152:8081</span>
         <span style="color:var(--dim)">· 局域网 AI 聊天平台</span>
       </div>
     </div>
@@ -1069,7 +1069,7 @@
       <div class="sp-core">
         <div class="sp-mark">慧川</div>
         <div class="sp-name">AI 交流台</div>
-        <div class="sp-sub" id="aiSplashTip">正在连接 192.168.0.126:8081 …</div>
+        <div class="sp-sub" id="aiSplashTip">正在连接 192.168.0.152:8081 …</div>
         <div class="sp-bar"><i></i></div>
       </div>
     </div>
@@ -3087,14 +3087,14 @@ function shareFrameLoaded(){
   const m=$('shareMask'); if(m) m.classList.add('hide');
 }
 
-/* ---------- AI 页（嵌入局域网 AI 聊天平台 192.168.0.126:8081） ---------- */
+/* ---------- AI 页（嵌入局域网 AI 聊天平台 192.168.0.152:8081） ---------- */
 let aiBase='', aiFrameReady=false, aiTimer=null;
 function aiUiBase(){
   if(aiBase) return aiBase.replace(/\/+$/,'');
   try{
     const h=location.hostname||'192.168.0.126';
     return 'http://'+h+':8081';
-  }catch(e){ return 'http://192.168.0.126:8081'; }
+  }catch(e){ return 'http://192.168.0.152:8081'; }
 }
 function aiUiUrl(){ return aiUiBase()+'/'; }
 

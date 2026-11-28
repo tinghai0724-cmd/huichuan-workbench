@@ -338,6 +338,15 @@
   .chip:hover{color:#f4f4f5;border-color:#3a3a40;background:#111113}
   .chip.on{background:rgba(79,131,224,.12);border-color:rgba(79,131,224,.45);color:var(--accent-2)}
   .sep{background:#1e1e21}
+  .sub .lib-hint{font-size:11px;color:var(--dim);margin-left:10px}  .chip .fav-n{opacity:.7;margin-left:2px}
+  .fav-btn{position:absolute;top:10px;right:10px;z-index:5;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;cursor:pointer;background:rgba(0,0,0,.56);border:1px solid rgba(255,255,255,.18);color:#f4f4f5;font-size:15px;line-height:1;backdrop-filter:blur(8px);transition:color .15s,background .15s,border-color .15s}
+  .fav-btn:hover{background:rgba(0,0,0,.76);color:#ffd166}
+  .fav-btn.on{color:#ffd166;border-color:rgba(255,209,102,.55);background:rgba(44,34,7,.72)}
+  .fav-grid{column-count:3}
+  .fav-card .imgwrap{max-height:220px}
+  .fav-card .thumb{max-height:220px;object-fit:cover}
+  .more-cards{display:flex;justify-content:center;padding:14px 0 26px}
+  @media(max-width:1100px){.fav-grid{column-count:2}}
 
   .scroll{padding:0 30px 130px}
   .scroll::-webkit-scrollbar-thumb{background:#222}
@@ -832,6 +841,9 @@
   html[data-theme="light"] video.thumb{background:#eef2f8}
   html[data-theme="light"] .mtag{background:rgba(255,255,255,.9);border:1px solid #e6ebf3;color:#2a3342;box-shadow:0 2px 10px rgba(16,24,40,.08)}
   html[data-theme="light"] .state{background:rgba(255,255,255,.92)}
+  html[data-theme="light"] .fav-btn{background:rgba(255,255,255,.88);border-color:#dfe5ee;color:#6b7686}
+  html[data-theme="light"] .fav-btn:hover{color:#b07b00;background:#fff}
+  html[data-theme="light"] .fav-btn.on{color:#b07b00;border-color:#e8c46a;background:#fffaf0}
   html[data-theme="light"] .ptext{color:#4b5565}
   html[data-theme="light"] .act-same{background:#e8f0ff;color:#12408f;border-color:#c7d8f7}
   html[data-theme="light"] .act-ico{background:#fff;border-color:#e2e7f0;color:#5a6474}
@@ -1088,6 +1100,7 @@
         <div class="sub">
           <span id="wfKind" class="cap kind">—</span>
           <span id="wfCount" style="color:var(--dim)">工作流加载中…</span>
+          <span id="libHint" class="lib-hint"></span>
         </div>
       </div>
       <div class="grow"></div>
@@ -1108,12 +1121,14 @@
       </div>
       <div class="caps" id="caps"></div>
       <div class="grow"></div>
+      <button class="btn" onclick="cleanupLibrary()" title="只清理工作台旧历史卡片，收藏和 ComfyUI 原文件都会保留">清理旧卡片</button>
       <button class="btn syncBtn" onclick="refreshWorkflows()" title="重新同步 ComfyUI 工作流库">↻ 同步</button>
       <button class="btn primary" onclick="openDrawer()">＋ 新建生成</button>
     </div>
 
     <div class="filters">
       <button class="chip on" data-f="all" onclick="setFilter(this)">全部</button>
+      <button class="chip" data-f="fav" onclick="setFilter(this)">★ 收藏 <span class="fav-n" id="favCount">0</span></button>
       <button class="chip" data-f="running" onclick="setFilter(this)">生成中</button>
       <button class="chip" data-f="done" onclick="setFilter(this)">已完成</button>
       <div class="sep"></div>
@@ -1124,6 +1139,7 @@
       <button class="chip" data-r="9:16" onclick="setRatio(this)">9:16</button>
       <div class="sep"></div>
       <button class="chip" id="viewToggle" onclick="toggleView()" title="切换图像 / 列表视图">▦ 图像</button>
+
     </div>
 
     <div class="scroll" id="scroll">
@@ -1504,6 +1520,7 @@
     <h3 style="margin-top:16px">参数</h3>
     <div id="vMeta"></div>
     <div class="row">
+      <button class="btn" id="vFavBtn" onclick="toggleCurrentFav()">★ 收藏</button>
       <button class="btn" onclick="rerun()">再生成</button>
       <button class="btn" onclick="downloadImage()">下载</button>
       <button class="btn" onclick="removeItem()">删除</button>
@@ -1609,7 +1626,7 @@ const RATIOS = [
 // 像素档位：8 档 2.0–20.0 MP（multiple = 32），三处滑块共用同一档位索引
 const MP_STEPS=[1.0,2.0,3.0,4.0,5.0,10.0,16.0,20.0];
 const MP_MAX = MP_STEPS[MP_STEPS.length-1];
-let STATE={items:[],jobs:{},workflows:[],default_workflow:''};
+let STATE={items:[],favorites:[],jobs:{},workflows:[],default_workflow:''};
 let filter='all', ratioFilter='all', mode='single', current=null, pollTimer=null;
 // 参考图：最多 5 张，refImages 存 ComfyUI input 里的文件名，refUrls 存本地预览用的 objectURL
 const REF_MAX = 5;
@@ -1676,7 +1693,7 @@ function fmtTime(ts){const d=new Date(ts*1000),diff=Date.now()/1000-ts;
   if(diff<60)return '刚刚'; if(diff<3600)return Math.floor(diff/60)+' 分钟前';
   if(diff<86400)return Math.floor(diff/3600)+' 小时前';
   return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}
-function imgUrl(f){const q=new URLSearchParams({filename:f.filename,subfolder:f.subfolder||'',type:f.type||'output'});if(CW_TOKEN)q.set('t',CW_TOKEN);return apiUrl('/api/img?'+q.toString())}
+function imgUrl(f, thumb){const q=new URLSearchParams({filename:f.filename,subfolder:f.subfolder||'',type:f.type||'output'});if(CW_TOKEN)q.set('t',CW_TOKEN);if(thumb)q.set('thumb','1');return apiUrl('/api/img?'+q.toString())}
 // 结果文件是图还是视频：ComfyUI 的 outputs 里 videos/gifs 才算视频，文件名再兜一层
 function isVideoFile(f){
   if(!f) return false;
@@ -1684,8 +1701,9 @@ function isVideoFile(f){
   return /\.(mp4|webm|mov|mkv|m4v|gif)$/i.test(f.filename||'');
 }
 function mediaThumb(f, cls, attrs){
-  const url=imgUrl(f);
-  if(isVideoFile(f)) return `<video class="${cls||''}" src="${url}" ${attrs||'muted loop playsinline preload="metadata"'}></video>`;
+  const video=isVideoFile(f);
+  const url=imgUrl(f, !video);
+  if(video) return `<video class="${cls||''}" src="${url}" ${attrs||'muted loop playsinline preload="metadata"'}></video>`;
   return `<img class="${cls||''}" src="${url}" alt="" loading="lazy" decoding="async">`;
 }
 function shareDl(id){return withToken(apiUrl('/api/share/download?id='+encodeURIComponent(id)))}
@@ -2044,7 +2062,13 @@ function groupByDate(items){
   return order.map(g=>({label:g, items:map.get(g)}));
 }
 
-function cardHtml(it){
+let renderCap = 60;
+function favIds(){ return new Set((STATE.favorites||[]).map(x=>x.prompt_id)); }
+function isFav(pid){ return (STATE.favorites||[]).some(x=>x.prompt_id===pid); }
+function favItem(pid){ return (STATE.favorites||[]).find(x=>x.prompt_id===pid); }
+function findItem(pid){ return STATE.items.find(x=>x.prompt_id===pid) || favItem(pid); }
+
+function cardHtml(it, favView){
   const st=itemState(it), file=(it.files||[])[0];
   let media;
   const vid = st==='done'&&file&&isVideoFile(file);
@@ -2054,10 +2078,12 @@ function cardHtml(it){
   else if(st==='error') media=`<div class="skeleton" style="aspect-ratio:4/3;display:grid;place-items:center;animation:none;color:#ff9c85">生成失败<br><span style="font-size:11px;color:#77777f">点开看原因</span></div>`;
   else media=`<div class="skeleton" style="aspect-ratio:4/3;display:grid;place-items:center;color:#8f8f98;font-size:12px">排队 / 生成中…</div>`;
   const badge = st==='done'? '' : `<div class="state ${st==='error'?'error':'running'}">${st==='error'?'失败':(st==='running'?'生成中':'排队中')}</div>`;
-  return `<div class="card" onclick="openViewer('${it.prompt_id}')">
+  const favd = isFav(it.prompt_id);
+  return `<div class="card${favView?' fav-card':''}" onclick="openViewer('${it.prompt_id}')">
     <div class="imgwrap">
       ${media}
       <div class="mtag" title="${escapeHtml(it.workflow||'')}">${escapeHtml(shortWf(it.workflow))}</div>
+      ${st==='done'?`<span class="fav-btn ${favd?'on':''}" title="${favd?'取消收藏':'收藏这张'}" onclick="event.stopPropagation();toggleFav('${it.prompt_id}')">★</span>`:''}
       ${badge}
     </div>
     <div class="pbody">
@@ -2077,7 +2103,6 @@ function cardHtml(it){
     </div></div>`;
 }
 
-function findItem(id){ return STATE.items.find(x=>x.prompt_id===id); }
 function copyPromptOf(id){
   const it=findItem(id); if(!it) return;
   const t=it.prompt||'';
@@ -2100,7 +2125,7 @@ async function actSame(id){
 function rowHtml(it){
   const st=itemState(it), file=(it.files||[])[0];
   const thumb=(st==='done'&&file)
-    ? `<div class="thumbbox"><img src="${imgUrl(file)}"  alt=""></div>`
+    ? `<div class="thumbbox"><img src="${imgUrl(file,true)}"  alt=""></div>`
     : `<div class="thumbbox">${st==='error'?'失败':'…'}</div>`;
   const t=(it.created||0)*1000;
   const full=new Date(t).toLocaleString('zh-CN',{hour12:false});
@@ -2119,25 +2144,47 @@ function rowHtml(it){
 
 function render(){
   const kw=($('q').value||'').trim().toLowerCase();
-  const items=STATE.items.filter(it=>{
-    const st=itemState(it);
-    if(filter==='running'&&!(st==='queued'||st==='running'))return false;
-    if(filter==='done'&&st!=='done')return false;
-    if(ratioFilter!=='all'&&!(it.aspect||'').startsWith(ratioFilter))return false;
-    if(kw&&!(it.prompt||'').toLowerCase().includes(kw))return false;
-    return true;
-  });
+  let items;
+  if(filter==='fav'){
+    items=(STATE.favorites||[]).filter(it=>{
+      if(ratioFilter!=='all'&&!(it.aspect||'').startsWith(ratioFilter))return false;
+      if(kw&&!(it.prompt||'').toLowerCase().includes(kw))return false;
+      return true;
+    });
+  }else{
+    items=STATE.items.filter(it=>{
+      const st=itemState(it);
+      if(filter==='running'&&!(st==='queued'||st==='running'))return false;
+      if(filter==='done'&&st!=='done')return false;
+      if(ratioFilter!=='all'&&!(it.aspect||'').startsWith(ratioFilter))return false;
+      if(kw&&!(it.prompt||'').toLowerCase().includes(kw))return false;
+      return true;
+    });
+  }
+  const shown=(filter==='fav'||kw)?items:items.slice(0,renderCap);
   $('empty').style.display=items.length?'none':'block';
-  const groups=groupByDate(items);
+  $('empty').innerHTML = filter==='fav'
+    ? '<b>还没有收藏</b>在作品卡片右上角点 ★，收藏会一直保留'
+    : '<b>还没有作品</b>点右上角「新建生成」，用工作流跑第一张图';
+  const fc=$('favCount'); if(fc) fc.textContent=String((STATE.favorites||[]).length);
+  const hint=$('libHint');
+  if(hint){
+    const p=STATE.library_policy||{};
+    hint.textContent = p.enabled===false ? '自动清理已关闭' : `每周自动清理 · 保留 ${p.keep_days||7} 天 · 收藏长期保留`;
+    hint.title = p.enabled===false ? '自动清理已在 config.local.json 关闭' : `最多保留 ${p.max_items||200} 条历史卡片；只清工作台记录，不动 ComfyUI 原文件`;
+  }
+  const groups=groupByDate(shown);
+  const more=items.length-shown.length;
   $('grid').innerHTML = groups.map(g=>{
     const head=`<div class="group-head"><b>${g.label}</b><span>${g.items.length} ${viewMode==='grid'?'张':'条'}</span><span class="ln"></span></div>`;
     return head + (viewMode==='grid'
-      ? `<div class="grid">${g.items.map(cardHtml).join('')}</div>`
+      ? `<div class="grid${filter==='fav'?' fav-grid':''}">${g.items.map(it=>cardHtml(it,filter==='fav')).join('')}</div>`
       : `<div class="list-wrap">${g.items.map(rowHtml).join('')}</div>`);
-  }).join('');
+  }).join('') + (more>0?`<div class="more-cards"><button class="btn" onclick="moreCards()">加载更多（还剩 ${more} 条）</button></div>`:'');
   pollManage();
   if($('homeView').classList.contains('show')) renderHome();
 }
+function moreCards(){ renderCap+=60; render(); }
 
 function pollManage(){
   const busy=STATE.items.some(it=>{const s=itemState(it);return s==='queued'||s==='running';});
@@ -2146,8 +2193,42 @@ function pollManage(){
 }
 
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function setFilter(el){document.querySelectorAll('[data-f]').forEach(c=>c.classList.remove('on'));el.classList.add('on');filter=el.dataset.f;render()}
-function setRatio(el){document.querySelectorAll('[data-r]').forEach(c=>c.classList.remove('on'));el.classList.add('on');ratioFilter=el.dataset.r;render()}
+function setFilter(el){document.querySelectorAll('[data-f]').forEach(c=>c.classList.remove('on'));el.classList.add('on');filter=el.dataset.f;renderCap=60;render()}
+function setRatio(el){document.querySelectorAll('[data-r]').forEach(c=>c.classList.remove('on'));el.classList.add('on');ratioFilter=el.dataset.r;renderCap=60;render()}
+
+async function toggleFav(pid){
+  const it=findItem(pid);
+  if(!it) return toast('找不到这张作品',true);
+  const on=isFav(pid);
+  try{
+    const r=await fetch('/api/favorites/toggle',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt_id:pid,item:it})});
+    const j=await r.json();
+    if(!r.ok||j.error) throw new Error(j.error||('HTTP '+r.status));
+    STATE.favorites=j.items||[];
+    render();
+    if(current && current.prompt_id===pid){
+      const fv=$('vFavBtn'); if(fv) fv.textContent=isFav(pid)?'★ 取消收藏':'★ 收藏';
+    }
+    toast(on?'已取消收藏':'已收藏，清理历史也会保留');
+  }catch(e){ toast('收藏失败：'+(e.message||e),true); }
+}
+async function toggleCurrentFav(){
+  if(!current) return;
+  const pid=current.prompt_id;
+  await toggleFav(pid);
+  if(!isFav(pid) && !STATE.items.some(x=>x.prompt_id===pid)) closeViewer();
+}
+async function cleanupLibrary(){
+  if(!confirm('清理工作台历史卡片？\n\n· 收藏夹内容全部保留\n· 不会删除 ComfyUI 上的任何原文件')) return;
+  try{
+    const r=await fetch('/api/library/cleanup',{method:'POST'});
+    const j=await r.json();
+    if(!r.ok||j.error) throw new Error(j.error||('HTTP '+r.status));
+    toast(`已清理 ${j.removed} 条（超期 ${j.removed_age} / 超量 ${j.removed_limit}），收藏保留 ${j.favorites} 条`);
+    renderCap=60; await load();
+  }catch(e){ toast('清理失败：'+(e.message||e),true); }
+}
 
 function setView(el){
   document.querySelectorAll('[data-v]').forEach(c=>c.classList.remove('on'));
@@ -2941,7 +3022,7 @@ async function pollCard(pid){
     if(!f){ if(stEl) stEl.textContent='即将完成 · 取图中'; return; }
     card.className='gi done';
     const media=card.querySelector('.gi-media');
-    if(media) media.innerHTML=`<img src="${imgUrl(f)}" alt="" onclick="openViewer('${pid}')">`;
+    if(media) media.innerHTML=`<img src="${imgUrl(f,true)}" alt="" loading="lazy" decoding="async" onclick="openViewer('${pid}')">`;
     if(stEl){ stEl.textContent='完成'; stEl.classList.remove('err'); stEl.classList.add('done'); }
     const tm=card.querySelector('.tm'); if(tm) tm.textContent=fmtTime(Math.floor(Date.now()/1000));
     const bar=card.querySelector('.gi-bar'); if(bar) bar.remove();
@@ -3139,9 +3220,8 @@ async function doSubmit(){
 }
 
 // ---------- 大图 ----------
-function findItem(pid){return STATE.items.find(i=>i.prompt_id===pid)}
-function openViewer(pid){
-  const it=findItem(pid); if(!it) return; current=it;
+function openViewer(pid, item){
+  const it=item || findItem(pid); if(!it) return; current=it;
   const file=(it.files||[])[0], st=itemState(it), job=STATE.jobs[it.prompt_id]||{};
   const isVid = !!file && isVideoFile(file);
   if(file && isVid){
@@ -3165,6 +3245,7 @@ function openViewer(pid){
     ['提交时间', new Date(it.created*1000).toLocaleString('zh-CN')],
     job.message?['错误', job.message]:null
   ].filter(Boolean).map(([k,v])=>`<div class="kv"><span>${k}</span><b>${escapeHtml(String(v))}</b></div>`).join('');
+  const fv=$('vFavBtn'); if(fv) fv.textContent = isFav(it.prompt_id) ? '★ 取消收藏' : '★ 收藏';
   $('viewer').classList.add('show');
 }
 function closeViewer(){
@@ -3181,9 +3262,16 @@ async function rerun(){
   toast('已重新提交'); closeViewer(); await load();
 }
 async function removeItem(){
-  if(!current||!confirm('从资产库移除这条记录？')) return;
+  if(!current) return;
+  const pid=current.prompt_id;
+  const inStore=STATE.items.some(x=>x.prompt_id===pid);
+  if(!inStore && isFav(pid)){
+    if(!confirm('从收藏夹移除这张？')) return;
+    await toggleFav(pid); closeViewer(); return;
+  }
+  if(!confirm('从资产库移除这条记录？\n如果已收藏，收藏夹里的快照会保留。')) return;
   await fetch('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({prompt_id:current.prompt_id})});
+    body:JSON.stringify({prompt_id:pid})});
   closeViewer(); await load();
 }
 function downloadImage(){

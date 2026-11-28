@@ -16,6 +16,7 @@ import base64
 import collections
 import copy
 import csv
+import hashlib
 import http.client
 import io
 import json
@@ -94,10 +95,26 @@ DEFAULTS = {
                    else {"MiniMaxH3MemoryEfficientSageAttentionPatch": "MiniMaxLowVRAMAttention"}),
     # 每次同步都以 ComfyUI 上保存的工作流为准（在 ComfyUI 里改完节点，这边自动跟着更新）
     "sync_from_comfy": bool(_CFG.get("sync_from_comfy", True)),
+    # 资产库历史卡片自动清理：只删工作台 records.json 里的记录，
+    # 不动收藏夹快照，也绝不删除 ComfyUI 上的原文件。
+    "library_keep_days": float(os.environ.get("CW_LIBRARY_KEEP_DAYS")
+                               or _CFG.get("library_keep_days") or 7),
+    "library_max_items": int(os.environ.get("CW_LIBRARY_MAX_ITEMS")
+                             or _CFG.get("library_max_items") or 200),
+    "library_cleanup_hours": float(os.environ.get("CW_LIBRARY_CLEANUP_HOURS")
+                                   or _CFG.get("library_cleanup_hours") or 168),
+    "library_cleanup_enabled": (
+        (os.environ.get("CW_LIBRARY_CLEANUP") or "").lower() not in ("0", "false", "no")
+        if (os.environ.get("CW_LIBRARY_CLEANUP") or "").strip()
+        else bool(_CFG.get("library_cleanup_enabled", True)
+                  if "library_cleanup_enabled" in _CFG else True)),
 }
 
 DATA_DIR = os.path.join(HERE, "data")
 RECORDS = os.path.join(DATA_DIR, "records.json")
+FAVORITES = os.path.join(DATA_DIR, "favorites.json")
+THUMB_DIR = os.path.join(DATA_DIR, "thumbs")
+os.makedirs(THUMB_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(DEFAULTS["workflow_dir"], exist_ok=True)
 
@@ -703,6 +720,58 @@ class Store:
             self.save()
 
 
+class FavoriteStore:
+    """收藏夹：保存整条作品快照，独立于 records.json。
+
+    这样历史记录被定期清理后，收藏的图文仍然完整可见。
+    """
+
+    KEEP_FIELDS = ("prompt_id", "prompt", "workflow", "files", "aspect", "megapixels",
+                   "seed", "created", "finished", "status", "origin", "image",
+                   "duration", "width", "height", "lora")
+
+    def __init__(self):
+        self.items = []
+        self.load()
+
+    def load(self):
+        if os.path.exists(FAVORITES):
+            try:
+                with open(FAVORITES, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self.items = data.get("items", []) if isinstance(data, dict) else (data or [])
+            except Exception:                    # noqa: BLE001
+                self.items = []
+
+    def save(self):
+        tmp = FAVORITES + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"items": self.items}, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, FAVORITES)
+
+    def ids(self):
+        return {str(i.get("prompt_id") or "") for i in self.items}
+
+    def has(self, prompt_id):
+        return any(i.get("prompt_id") == prompt_id for i in self.items)
+
+    def toggle(self, prompt_id, item=None):
+        """有则取消，没有则收藏；返回 (是否已收藏, 当前列表)。"""
+        with _lock:
+            keep = [i for i in self.items if i.get("prompt_id") != prompt_id]
+            if len(keep) != len(self.items):
+                self.items = keep
+                self.save()
+                return False, list(self.items)
+            snap = {k: item.get(k) for k in self.KEEP_FIELDS
+                    if item and item.get(k) is not None}
+            snap["prompt_id"] = prompt_id
+            snap["fav_at"] = time.time()
+            self.items.insert(0, snap)
+            self.save()
+            return True, list(self.items)
+
+
 # ============================ 文档库（上传表格/文本，解析成可复制的词条）============================
 
 DOCS_DIR = os.path.join(DATA_DIR, "docs")
@@ -1125,6 +1194,73 @@ SHARE = ShareHub(SHARE_BASE)
 CLIENT = Comfy(DEFAULTS["server"], DEFAULTS["user"], DEFAULTS["password"])
 REG = Registry(CLIENT)
 STORE = Store()
+FAV = FavoriteStore()
+
+
+def prune_library(reason="auto"):
+    """清理工作台里的历史卡片，只改 records.json。
+
+    - 收藏夹里的记录永不删除（快照另存在 favorites.json）
+    - 只删 status=done 且超过保留天数的记录
+    - 再按条数上限保留最新的非收藏记录，防止首页越开越卡
+    - 不调用 ComfyUI，不删除任何图片/视频原文件
+    """
+    fav = FAV.ids()
+    days = float(DEFAULTS.get("library_keep_days") or 0)
+    cutoff = time.time() - days * 86400 if days > 0 else 0
+    max_items = int(DEFAULTS.get("library_max_items") or 0)
+    with _lock:
+        current = list(STORE.items)
+        keep, dropped_age = [], 0
+        for it in current:
+            pid = str(it.get("prompt_id") or "")
+            st = it.get("status")
+            if pid in fav or st in ("queued", "running"):
+                keep.append(it)
+                continue
+            if cutoff and st == "done" and float(it.get("created") or 0) < cutoff:
+                dropped_age += 1
+                continue
+            keep.append(it)
+        dropped_limit = 0
+        if max_items > 0:
+            done = [it for it in keep
+                    if str(it.get("prompt_id") or "") not in fav and it.get("status") == "done"]
+            overflow = len(done) - max_items
+            if overflow > 0:
+                oldest = sorted(done, key=lambda x: float(x.get("created") or 0))[:overflow]
+                drop_ids = {str(x.get("prompt_id") or "") for x in oldest}
+                keep = [it for it in keep if str(it.get("prompt_id") or "") not in drop_ids]
+                dropped_limit = len(drop_ids)
+        if dropped_age or dropped_limit:
+            STORE.items = keep
+            STORE.save()
+    return {
+        "ok": True, "reason": reason,
+        "removed": dropped_age + dropped_limit,
+        "removed_age": dropped_age, "removed_limit": dropped_limit,
+        "kept": len(keep), "favorites": len(fav),
+        "keep_days": days, "max_items": max_items,
+    }
+
+
+def _library_cleanup_loop():
+    time.sleep(3)
+    while True:
+        try:
+            if DEFAULTS.get("library_cleanup_enabled", True):
+                info = prune_library("auto")
+                if info.get("removed"):
+                    print(f"[library] 自动清理 {info['removed']} 条历史卡片，"
+                          f"收藏保留 {info['favorites']} 条", flush=True)
+        except Exception as e:                  # noqa: BLE001
+            print(f"[library] 自动清理失败：{e}", flush=True)
+        hours = float(DEFAULTS.get("library_cleanup_hours") or 168)
+        time.sleep(max(1.0, hours) * 3600)
+
+
+threading.Thread(target=_library_cleanup_loop, name="library-cleanup", daemon=True).start()
+
 
 # ============================ 登录 / Basic Auth ============================
 AUTH_FILE = os.path.join(DATA_DIR, "auth.json")
@@ -1869,6 +2005,13 @@ class Handler(BaseHTTPRequestHandler):
                             if REG.caps_of(n).get("ok") and REG.caps_of(n).get("kind") == "视频"]
                 return self._json({
                     "items": STORE.items,
+                    "favorites": FAV.items,
+                    "library_policy": {
+                        "keep_days": DEFAULTS.get("library_keep_days"),
+                        "max_items": DEFAULTS.get("library_max_items"),
+                        "cleanup_hours": DEFAULTS.get("library_cleanup_hours"),
+                        "enabled": bool(DEFAULTS.get("library_cleanup_enabled", True)),
+                    },
                     "jobs": STORE.jobs,
                     "ratios": RATIOS,
                     "server": DEFAULTS["server"],
@@ -1880,6 +2023,9 @@ class Handler(BaseHTTPRequestHandler):
                     "ai_server": AI_BASE,
                     "only_favorites": bool(DEFAULTS.get("only_favorites", True)),
                 })
+
+            if path == "/api/favorites":
+                return self._json({"items": FAV.items})
 
             if path == "/api/ai/state":
                 return self._json(probe_ai())
@@ -1930,8 +2076,38 @@ class Handler(BaseHTTPRequestHandler):
                 fn = (q.get("filename") or [""])[0]
                 sub = (q.get("subfolder") or [""])[0]
                 typ = (q.get("type") or ["output"])[0]
+                thumb = (q.get("thumb") or [""])[0] in ("1", "true", "yes")
                 if not fn:
                     return self._json({"error": "missing filename"}, 400)
+                if thumb and not re.search(r"\.(mp4|webm|mov|mkv|m4v|gif)$", fn, re.I):
+                    key = hashlib.sha1(f"{fn}|{sub}|{typ}|webp60".encode()).hexdigest()
+                    fp = os.path.join(THUMB_DIR, key)
+                    data = None
+                    if os.path.exists(fp):
+                        with open(fp, "rb") as f:
+                            data = f.read()
+                    if not data:
+                        data = CLIENT.get("/api/view?" + urllib.parse.urlencode(
+                            {"filename": fn, "subfolder": sub, "type": typ,
+                             "preview": "webp;60"}))
+                        try:
+                            tmp = fp + "." + uuid.uuid4().hex
+                            with open(tmp, "wb") as f:
+                                f.write(data)
+                            os.replace(tmp, fp)
+                        except Exception:            # noqa: BLE001
+                            pass
+                    ctype = "image/webp" if data[:4] == b"RIFF" else (
+                        "image/png" if data[:4] == b"\x89PNG" else "image/jpeg")
+                    self.send_response(200)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Cache-Control", "public, max-age=604800")
+                    self._cors()
+                    self.end_headers()
+                    if self.command != "HEAD":
+                        self.wfile.write(data)
+                    return
                 data = CLIENT.get("/api/view?" + urllib.parse.urlencode(
                     {"filename": fn, "subfolder": sub, "type": typ}))
                 ctype = mimetypes.guess_type(fn)[0] or "image/png"
@@ -2138,6 +2314,23 @@ class Handler(BaseHTTPRequestHandler):
                     origin=self._origin(),
                     duration=(p.get("duration") or src.get("duration")))
                 return self._json({"prompt_id": pid})
+
+            if path == "/api/favorites/toggle":
+                p = self._payload()
+                pid = str(p.get("prompt_id") or "").strip()
+                if not pid:
+                    return self._json({"error": "missing prompt_id"}, 400)
+                if FAV.has(pid):
+                    added, items = FAV.toggle(pid)
+                else:
+                    it = p.get("item") or {}
+                    if it.get("status") != "done" or not (it.get("files") or []):
+                        return self._json({"error": "只能收藏已完成的图片或视频"}, 400)
+                    added, items = FAV.toggle(pid, it)
+                return self._json({"ok": True, "favorited": added, "items": items})
+
+            if path == "/api/library/cleanup":
+                return self._json(prune_library("manual"))
 
             if path == "/api/delete":
                 STORE.drop(self._payload().get("prompt_id"))

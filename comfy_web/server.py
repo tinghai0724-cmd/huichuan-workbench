@@ -16,6 +16,7 @@ import base64
 import collections
 import copy
 import csv
+import http.client
 import io
 import json
 import math
@@ -1479,6 +1480,97 @@ def submit_one(*, workflow, text, image=None, images=None, aspect, megapixels, w
     return pid
 
 
+# ===== 内嵌页主题代理 =====
+# 共享页(172:8080) 与 AI 页(172:8787) 原本是跨域 iframe，父页无法改它们的样式。
+# 这里把两页代理到工作台同源 /embed/share/、/embed/ai/，注入主题钩子，
+# 由父页 postMessage 同步黑白主题（工作流页不参与）。
+EMBED_LIGHT_CSS = """
+<style id="cw-embed-style">
+html[data-cw-theme="light"]{
+  --bg:#f4f6fa;--bg-2:#eaf0f8;--panel:#ffffff;--panel-2:#f3f7fd;--line:#e1e7f1;
+  --text:#151a24;--text-dim:#5a6474;--text-mute:#8a94a4;
+  --shadow:0 10px 30px rgba(20,30,50,.10);
+}
+html[data-cw-theme="light"] body{
+  background:radial-gradient(1200px 600px at 15% -10%,rgba(91,140,255,.10),transparent 60%),
+             radial-gradient(900px 500px at 95% 0%,rgba(139,92,246,.08),transparent 60%),#f4f6fa;
+  color:#151a24;
+}
+html[data-cw-theme="light"] .topbar{background:rgba(255,255,255,.86);border-bottom-color:#e5eaf2}
+html[data-cw-theme="light"] ::-webkit-scrollbar-thumb{background:#c6d2e3}
+html[data-cw-theme="light"] ::-webkit-scrollbar-thumb:hover{background:#b0bfd6}
+html[data-cw-theme="light"] .icon-btn{background:#f1f5fb;border-color:#e1e7f1}
+html[data-cw-theme="light"] .icon-btn:hover{background:#e8effa;border-color:#c9d6e8}
+html[data-cw-theme="light"] .dropzone{border-color:#c2d0e5}
+html[data-cw-theme="light"] .dropzone:hover{border-color:#9db6da}
+html[data-cw-theme="light"] .file-card:hover{border-color:#b9c9e2}
+html[data-cw-theme="light"] .chip:hover{border-color:#b9c9e2}
+html[data-cw-theme="light"] .fc-badge{background:rgba(255,255,255,.86);border-color:#dfe6f0;color:#5a6474}
+html[data-cw-theme="light"] .toast{background:#fff;border-color:#e1e7f1;color:#151a24}
+html[data-cw-theme="light"] .toast.ok{color:#12804a;border-color:rgba(34,197,94,.45)}
+html[data-cw-theme="light"] .toast.err{color:#b42318;border-color:rgba(239,68,68,.4)}
+html[data-cw-theme="light"] .modal{background:rgba(20,28,44,.38)}
+html[data-cw-theme="light"] .modal-box{background:#fff;border-color:#e1e7f1}
+html[data-cw-theme="light"] .net-warn{background:rgba(245,158,11,.12);color:#8a5306}
+html[data-cw-theme="light"] .net-badge.ok{color:#12804a}
+html[data-cw-theme="light"] .net-badge.warn{color:#a5620a}
+html[data-cw-theme="light"] .search,html[data-cw-theme="light"] .select,html[data-cw-theme="light"] .chat-input{background:#fff;border-color:#e1e7f1;color:#151a24}
+html[data-cw-theme="light"] .lan-line{color:#5a6474}
+</style>
+"""
+
+EMBED_THEME_JS = """
+<script id="cw-embed-theme">
+(function(){
+  function setCwTheme(t){
+    var d = (t==='dark');
+    try{
+      document.documentElement.setAttribute('data-cw-theme', d?'dark':'light');
+      document.documentElement.style.colorScheme = d?'dark':'light';
+      document.body.dataset.skin = d?'dark':'light';
+    }catch(e){}
+    var b=document.getElementById('skinBtn'); if(b) b.textContent = d?'☀️':'🌙';
+  }
+  window.setCwTheme=setCwTheme;
+  try{ setCwTheme('light'); }catch(e){}
+  window.addEventListener('message', function(e){
+    if(e && e.data && e.data.cwTheme) setCwTheme(e.data.cwTheme);
+  });
+})();
+</script>
+"""
+
+EMBED_AI_EXTRA = '<style>#skinBtn{display:none!important}</style>'
+
+
+def embed_patch(text, kind):
+    """把第三方页面的资源/接口路径改到代理前缀，并注入主题钩子。"""
+    prefix = "/embed/share" if kind == "share" else "/embed/ai"
+    if kind == "share":
+        text = text.replace('href="/styles.css', 'href="%s/styles.css' % prefix)
+        text = text.replace('src="/app.js', 'src="%s/app.js' % prefix)
+        text = text.replace('"/api/', '"%s/api/' % prefix)
+        text = text.replace("'/api/", "'%s/api/" % prefix)
+        text = text.replace('"/assets/', '"%s/assets/' % prefix)
+        head = EMBED_LIGHT_CSS
+        extra = ""
+    else:
+        text = text.replace('"/api/', '"%s/api/' % prefix)
+        text = text.replace('"/history/', '"%s/history/' % prefix)
+        text = text.replace('"/assets/', '"%s/assets/' % prefix)
+        text = text.replace("'/api/", "'%s/api/" % prefix)
+        text = text.replace("'/assets/", "'%s/assets/" % prefix)
+        head = ""
+        extra = EMBED_AI_EXTRA
+    if "</head>" in text:
+        text = text.replace("</head>", head + EMBED_THEME_JS + extra + "</head>", 1)
+    elif "</body>" in text:
+        text = text.replace("</body>", head + EMBED_THEME_JS + extra + "</body>", 1)
+    else:
+        text += head + EMBED_THEME_JS + extra
+    return text
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "ComfyWorkbench/2.0"
 
@@ -1626,6 +1718,100 @@ class Handler(BaseHTTPRequestHandler):
         fwd = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
         return fwd or (self.client_address[0] if self.client_address else "")
 
+    # ---------- 内嵌代理：共享页 / AI 页（同源化 + 主题注入） ----------
+    def _proxy_embed(self, method):
+        path = urllib.parse.urlparse(self.path).path
+        kind = "share" if path.startswith("/embed/share") else "ai"
+        prefix = "/embed/share" if kind == "share" else "/embed/ai"
+        base = ((SHARE_BASE if kind == "share" else AI_BASE) or "").rstrip("/")
+        if not base:
+            return self._json({"error": "未配置上游地址"}, 502)
+
+        rest = self.path[len(prefix):] or "/"
+        if not rest.startswith("/"):
+            rest = "/" + rest
+        u = urllib.parse.urlsplit(base + rest)
+        target = u.path + ("?" + u.query if u.query else "")
+
+        fwd = []
+        for k, v in self.headers.items():
+            lk = k.lower()
+            if lk in ("host", "connection", "content-length", "accept-encoding",
+                      "origin", "referer", "cookie"):
+                continue
+            fwd.append((k, v))
+        length = int(self.headers.get("Content-Length") or 0)
+
+        conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=300)
+        try:
+            conn.putrequest(method, target, skip_accept_encoding=True)
+            for k, v in fwd:
+                conn.putheader(k, v)
+            if length:
+                conn.putheader("Content-Length", str(length))
+            conn.endheaders()
+            if length and method in ("POST", "PUT", "PATCH", "DELETE"):
+                left = length
+                while left > 0:
+                    b = self.rfile.read(min(65536, left))
+                    if not b:
+                        break
+                    conn.send(b)
+                    left -= len(b)
+
+            r = conn.getresponse()
+            ctype = r.getheader("Content-Type") or ""
+            rewrite = method != "HEAD" and ("text/html" in ctype or "javascript" in ctype)
+            data = None
+            if rewrite:
+                raw = r.read().decode("utf-8", "replace")
+                data = embed_patch(raw, kind).encode("utf-8")
+
+            self.send_response(r.status)
+            for h in ("Content-Type", "Content-Disposition", "Accept-Ranges",
+                      "Content-Range", "Last-Modified", "ETag"):
+                v = r.getheader(h)
+                if v:
+                    self.send_header(h, v)
+            loc = r.getheader("Location")
+            if loc:
+                if loc.startswith(base):
+                    loc = prefix + loc[len(base):]
+                self.send_header("Location", loc)
+            self.send_header("Cache-Control", "no-store")
+            if data is not None:
+                self.send_header("Content-Length", str(len(data)))
+            else:
+                cl = r.getheader("Content-Length")
+                if cl and "text/event-stream" not in ctype:
+                    self.send_header("Content-Length", cl)
+                else:
+                    self.send_header("Connection", "close")
+                    if "text/event-stream" in ctype:
+                        self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+            if method == "HEAD":
+                return
+            if data is not None:
+                self.wfile.write(data)
+                return
+            while True:
+                b = r.read1(65536)
+                if not b:
+                    break
+                self.wfile.write(b)
+                self.wfile.flush()
+        except Exception as e:                                   # noqa: BLE001
+            try:
+                self._json({"error": "内嵌页代理失败：%s" % e}, 502)
+            except Exception:
+                pass
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
     # ---------- GET ----------
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
@@ -1635,6 +1821,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._redirect("/comfy/")
             if path.startswith("/comfy/"):
                 return self._proxy_comfy("GET")
+
+            if path in ("/embed/share", "/embed/ai"):
+                return self._redirect(path + "/")
+            if path.startswith("/embed/share/") or path.startswith("/embed/ai/"):
+                return self._proxy_embed("GET")
 
             if path in ("/", "/index.html"):
                 with open(os.path.join(HERE, "index.html"), "rb") as f:
@@ -1821,6 +2012,19 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:                   # noqa: BLE001
             return self._json({"error": f"{type(e).__name__}: {e}"}, 500)
 
+    # ---------- DELETE / PUT（内嵌页删除文件等） ----------
+    def do_DELETE(self):
+        path = urllib.parse.urlparse(self.path).path
+        if path.startswith("/embed/share/") or path.startswith("/embed/ai/"):
+            return self._proxy_embed("DELETE")
+        return self._json({"error": "not found"}, 404)
+
+    def do_PUT(self):
+        path = urllib.parse.urlparse(self.path).path
+        if path.startswith("/embed/share/") or path.startswith("/embed/ai/"):
+            return self._proxy_embed("PUT")
+        return self._json({"error": "not found"}, 404)
+
     # ---------- POST ----------
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
@@ -1828,6 +2032,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path.startswith("/comfy/"):
                 return self._proxy_comfy("POST")
+
+            if path.startswith("/embed/share/") or path.startswith("/embed/ai/"):
+                return self._proxy_embed("POST")
 
             if path == "/api/login":
                 return self._login()

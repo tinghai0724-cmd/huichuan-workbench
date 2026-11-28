@@ -99,7 +99,7 @@ pwsh tools/publish.ps1 -Repo tinghai0724-cmd/huichuan-workbench -Message "首页
 
 ## 排版与交互
 
-- 纯黑底 + 琥珀金强调色，主色 `#023a91`，主按钮渐变 `#023a91 → #1f5cc0`
+- 纯黑底 + 蓝色强调色，主色 `#023a91`，主按钮渐变 `#023a91 → #1f5cc0`；另有一套白色主题，可在顶栏状态区或侧栏底部的 ☀/☾ 按钮全局切换（记忆在 `localStorage.cw_theme`，默认黑色）
 - 侧栏：首页 / 资产库 / 生成 / 工作流 / 文档 / 共享 / AI / 状态
 - 「生成」是左右分栏：左边生成过程卡片流，右边保留完整生成抽屉
 - 「工作流」内嵌原版 ComfyUI（`/comfy/*` 反代，自动代填 Basic Auth）

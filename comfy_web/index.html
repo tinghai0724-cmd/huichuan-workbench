@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#000000">
+<script>try{if(localStorage.getItem('cw_theme')==='light'){document.documentElement.setAttribute('data-theme','light');}}catch(e){}</script>
 <title>Comfy 工作台 · 资产库</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
@@ -759,6 +761,249 @@
   .ai-splash .sp-bar{width:168px;height:3px;border-radius:99px;background:rgba(120,190,255,.16);overflow:hidden;margin-top:6px}
   .ai-splash .sp-bar i{display:block;height:100%;width:36%;border-radius:99px;background:linear-gradient(90deg,#379cdd,#b3e9ff);animation:spBar 1.6s ease-in-out infinite}
   @keyframes spBar{0%{transform:translateX(-108%)}100%{transform:translateX(318%)}}
+
+  /* ==================== 黑色 / 白色 主题 ==================== */
+  /* 主题切换按钮：顶栏状态区 + 左侧栏（全局可用） */
+  .theme-btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;
+    background:#141416;border:1px solid #26262b;color:#a9a9b1;font-size:11.5px;font-family:inherit;cursor:pointer;
+    transition:.16s;flex:none}
+  .theme-btn:hover{border-color:#3d3d47;color:#f4f4f5}
+  .theme-btn .ti{font-size:13px;line-height:1}
+  .theme-rail{width:38px;height:38px;margin:4px 0 10px;border-radius:12px;display:grid;place-items:center;
+    background:transparent;border:1px solid transparent;color:#85858d;cursor:pointer;font-size:16px;line-height:1;transition:.16s}
+  .theme-rail:hover{background:#121214;color:#f4f4f5}
+  html[data-theme="light"] .theme-btn{background:#fff;border-color:#dbe3ef;color:#5a6474}
+  html[data-theme="light"] .theme-btn:hover{border-color:#9db6dc;color:#0b3f9e}
+  html[data-theme="light"] .theme-rail{color:#6b7686}
+  html[data-theme="light"] .theme-rail:hover{background:#eff3f9;color:#0b3f9e}
+
+  /* 浅色令牌 */
+  html[data-theme="light"]{
+    --bg:#f4f6fa; --panel:#ffffff; --panel-2:#eff3f9; --line:#e2e7f0;
+    --text:#151a23; --muted:#5a6474; --dim:#8a94a4;
+    --accent:#023a91; --accent-2:#2f6bd8;
+  }
+  html[data-theme="light"] body{background:#f4f6fa;color:#151a23}
+
+  /* 侧栏 */
+  html[data-theme="light"] .rail{background:#fff;border-right-color:#e5eaf2}
+  html[data-theme="light"] .logo img{filter:invert(1) drop-shadow(0 0 1px rgba(0,0,0,.08))}
+  html[data-theme="light"] .nav-item{color:#6b7686}
+  html[data-theme="light"] .nav-item:hover{background:#f0f4fa;color:#151a23}
+  html[data-theme="light"] .nav-item.active{background:#e8f0ff;color:#0b3f9e}
+  html[data-theme="light"] .nav-item.active svg{stroke:#0b3f9e}
+  html[data-theme="light"] .avatar{background:#eff3f9;border-color:#dde4ee;color:#5a6474}
+
+  /* 顶栏 / 状态 / 按钮 / 搜索 / 筛选 */
+  html[data-theme="light"] .title{color:#0f131a}
+  html[data-theme="light"] .status{background:#fff;border-color:#e2e7f0;color:#5a6474}
+  html[data-theme="light"] .btn{background:#f2f5fa;border-color:#dfe5ee;color:#28303c}
+  html[data-theme="light"] .btn:hover{background:#e9eff8;border-color:#c9d5e6;color:#0f131a}
+  html[data-theme="light"] .btn.primary{background:#023a91;border-color:transparent;color:#fff;box-shadow:0 4px 16px rgba(2,58,145,.22)}
+  html[data-theme="light"] .search{background:#fff;border-color:#e2e7f0}
+  html[data-theme="light"] .search input{color:#151a23}
+  html[data-theme="light"] .search input::placeholder{color:#98a1af}
+  html[data-theme="light"] .search:focus-within{border-color:#a9c0e4}
+  html[data-theme="light"] .wfsel{background:#fff;border-color:#e2e7f0}
+  html[data-theme="light"] .wfsel select{color:#28303c}
+  html[data-theme="light"] .wfsel select option,
+  html[data-theme="light"] .qpill select option,
+  html[data-theme="light"] .hero-pick option,
+  html[data-theme="light"] .wfpick option{background:#fff;color:#151a23}
+  html[data-theme="light"] .cap{color:#77808f;border-color:#e2e7f0;background:#fff}
+  html[data-theme="light"] .cap.on{color:#0b6b4f;border-color:#bfe3d4;background:#eaf8f2}
+  html[data-theme="light"] .cap.kind{color:#2a4f96;border-color:#cfdcf4;background:#ebf2ff}
+  html[data-theme="light"] .chip{background:#fff;border-color:#e2e7f0;color:#5a6474}
+  html[data-theme="light"] .chip:hover{background:#f6f9fe;border-color:#c6d4e6;color:#151a23}
+  html[data-theme="light"] .chip.on{background:#e8f0ff;border-color:#a9c6f2;color:#0b3f9e}
+  html[data-theme="light"] .sep{background:#e5ebf3}
+
+  /* 资产库瀑布流 / 列表 */
+  html[data-theme="light"] .scroll::-webkit-scrollbar-thumb,
+  html[data-theme="light"] .home-scroll::-webkit-scrollbar-thumb,
+  html[data-theme="light"] .sv-body::-webkit-scrollbar-thumb,
+  html[data-theme="light"] .lib-body::-webkit-scrollbar-thumb,
+  html[data-theme="light"] .gen-thread::-webkit-scrollbar-thumb{background:#cdd6e3}
+  html[data-theme="light"] .imgwrap,
+  html[data-theme="light"] .thumb,
+  html[data-theme="light"] video.thumb{background:#eef2f8}
+  html[data-theme="light"] .mtag{background:rgba(255,255,255,.9);border:1px solid #e6ebf3;color:#2a3342;box-shadow:0 2px 10px rgba(16,24,40,.08)}
+  html[data-theme="light"] .state{background:rgba(255,255,255,.92)}
+  html[data-theme="light"] .ptext{color:#4b5565}
+  html[data-theme="light"] .act-same{background:#e8f0ff;color:#12408f;border-color:#c7d8f7}
+  html[data-theme="light"] .act-ico{background:#fff;border-color:#e2e7f0;color:#5a6474}
+  html[data-theme="light"] .act-ico:hover{color:#0b3f9e;border-color:#a9c6f2}
+  html[data-theme="light"] .act-more{color:#6b7686}
+  html[data-theme="light"] .tag{background:#eff3f9;color:#5a6474}
+  html[data-theme="light"] .tag.wf{background:#e8f0ff;color:#12408f}
+  html[data-theme="light"] .skeleton{background:linear-gradient(110deg,#eef2f8 30%,#f8fafd 50%,#eef2f8 70%)}
+  html[data-theme="light"] .list-wrap{border-color:#e2e7f0}
+  html[data-theme="light"] .li{background:#fff;border-color:#e9edf5}
+  html[data-theme="light"] .li:hover{background:#f6f9fe}
+  html[data-theme="light"] .li .tag{background:#f2f5fa}
+  html[data-theme="light"] .li .thumbbox{background:#eff3f9}
+  html[data-theme="light"] .group-head{background:#f4f6fa}
+
+  /* 抽屉 / 输入 / 浮层 */
+  html[data-theme="light"] .drawer{background:#fff;border-left-color:#e5eaf2}
+  html[data-theme="light"] .drawer-mask{background:rgba(17,24,39,.32)}
+  html[data-theme="light"] .drawer input,
+  html[data-theme="light"] .drawer textarea,
+  html[data-theme="light"] .drawer select{background:#fff;color:#151a23;border-color:#dfe5ee}
+  html[data-theme="light"] .drawer input::placeholder,
+  html[data-theme="light"] .drawer textarea::placeholder,
+  html[data-theme="light"] .qbox textarea::placeholder,
+  html[data-theme="light"] .gc-box textarea::placeholder{color:#98a1af}
+  html[data-theme="light"] .drop{background:#fbfcfe;border-color:#dbe3ef}
+  html[data-theme="light"] .drop:hover{border-color:#a9c0e4}
+  html[data-theme="light"] .drop .ph{background:#eff3f9;color:#7c8798}
+  html[data-theme="light"] .lbadge{background:#eff3f9;color:#5a6474}
+  html[data-theme="light"] .progress{background:#e8edf5}
+  html[data-theme="light"] .toast{background:#fff;border-color:#dbe3ef;color:#151a23;box-shadow:0 12px 34px rgba(16,24,40,.14)}
+  html[data-theme="light"] .toast.err{background:#fff5f4;border-color:#f3cfcb;color:#b4322a}
+  html[data-theme="light"] .viewer{background:rgba(244,246,250,.9)}
+  html[data-theme="light"] .vpanel{background:#fff;border-color:#e2e7f0}
+  html[data-theme="light"] .vpanel .p{background:#f7fafd;border-color:#e6ebf3;color:#333c4a}
+  html[data-theme="light"] .kv{border-bottom-color:#e9edf5}
+  html[data-theme="light"] .composer .bar{background:rgba(255,255,255,.94);border-color:#dfe5ee;box-shadow:0 12px 40px rgba(16,24,40,.12)}
+  html[data-theme="light"] .composer input{color:#151a23}
+  html[data-theme="light"] .composer .est{color:#7c8798}
+  html[data-theme="light"] .modesw{background:#fff;border-color:#e2e7f0}
+  html[data-theme="light"] .modesw .ms{color:#6b7686}
+  html[data-theme="light"] .modesw .ms:hover{color:#151a23}
+  html[data-theme="light"] .modesw .ms.on{color:#fff}
+
+  /* 创作首页 */
+  html[data-theme="light"] #homeView{background:#f4f6fa}
+  html[data-theme="light"] .brand-big #homeBrand{filter:invert(1);opacity:.36}
+  html[data-theme="light"] .brand-big.near #homeBrand{opacity:.5}
+  html[data-theme="light"] .brand-lit{filter:invert(1) drop-shadow(0 0 12px rgba(2,58,145,.25))}
+  html[data-theme="light"] .brand-sub{color:#7c8798}
+  html[data-theme="light"] .wf-chip{background:#fff;border-color:#e2e7f0;color:#5a6474}
+  html[data-theme="light"] .wf-chip:hover{border-color:#c6d4e6;color:#151a23}
+  html[data-theme="light"] .wf-chip.on{background:#e8f0ff;border-color:#a9c6f2;color:#0b3f9e}
+  html[data-theme="light"] .qbox{background:#fff;border-color:#dfe5ee;box-shadow:0 8px 28px rgba(16,24,40,.06)}
+  html[data-theme="light"] .qbox:focus-within{border-color:#9dbcec;box-shadow:0 0 0 3px rgba(79,131,224,.16)}
+  html[data-theme="light"] .qbox textarea{color:#151a23}
+  html[data-theme="light"] .qpill{background:#f5f8fc;border-color:#e2e7f0;color:#5a6474}
+  html[data-theme="light"] .qpill:hover{background:#fff;border-color:#c6d4e6;color:#151a23}
+  html[data-theme="light"] .qpill.on{background:#e8f0ff;border-color:#a9c6f2;color:#0b3f9e}
+  html[data-theme="light"] .qpill.need{border-color:#e2a33c;color:#8a5410;background:#fff4e2}
+  html[data-theme="light"] .ref-item{background:#f7fafd;border-color:#dfe5ee}
+  html[data-theme="light"] .ref-item .del{background:rgba(255,255,255,.92);border-color:#d5dce8;color:#4b5565}
+  html[data-theme="light"] .ref-add{background:#fbfcfe;border-color:#d3dbe7;color:#7c8798}
+  html[data-theme="light"] .qslide{border-top-color:#e9edf5}
+  html[data-theme="light"] .qslide .qs-ic{color:#7c8798}
+  html[data-theme="light"] .qslide .qs-val{color:#28303c}
+  html[data-theme="light"] .qs-hint{color:#7c8798}
+  html[data-theme="light"] .ratio-pop{background:#fff;border-color:#dfe5ee;box-shadow:0 18px 44px rgba(16,24,40,.16)}
+  html[data-theme="light"] .rp-search{border-bottom-color:#eef2f7}
+  html[data-theme="light"] .rp-search input{background:#f5f8fc;border-color:#dfe5ee;color:#151a23}
+  html[data-theme="light"] .rp-search input::placeholder{color:#98a1af}
+  html[data-theme="light"] .rp-item{color:#39404f}
+  html[data-theme="light"] .rp-item:hover{background:#f2f6fc}
+  html[data-theme="light"] .rp-item b{color:#0f131a}
+  html[data-theme="light"] .rp-item small{color:#7c8798}
+  html[data-theme="light"] .rp-empty{color:#8a94a4}
+  html[data-theme="light"] .home-tip{color:#8a94a4}
+  html[data-theme="light"] .hero{border-color:#e2e7f0}
+  html[data-theme="light"] .hero.a{background:linear-gradient(135deg,#eef4ff,#f8fafe 58%,#e9f1fd)}
+  html[data-theme="light"] .hero.b{background:linear-gradient(135deg,#f3efff,#faf9fe 58%,#eeeafd)}
+  html[data-theme="light"] .hero.c{background:linear-gradient(135deg,#eaf7f3,#f8fbfa 58%,#e6f4ee)}
+  html[data-theme="light"] .hero:hover{border-color:#b9cbe6}
+  html[data-theme="light"] .hero p{color:#4b5565}
+  html[data-theme="light"] .hero .mini span{background:#fff;color:#4b5565;border:1px solid #e6ebf3}
+  html[data-theme="light"] .hero .go{color:#023a91}
+  html[data-theme="light"] .notice-btn{background:rgba(255,255,255,.9);border-color:#dfe5ee;color:#39404f}
+  html[data-theme="light"] .notice-btn:hover{border-color:#b9cbe6}
+
+  /* 生成过程页 */
+  html[data-theme="light"] #genView{background:#f4f6fa}
+  html[data-theme="light"] .gi-prompt{background:#fff;border-color:#e2e7f0;color:#2b3444}
+  html[data-theme="light"] .gi-media{background:#eef2f8;border-color:#e2e7f0}
+  html[data-theme="light"] .gi-badge{background:rgba(255,255,255,.9);border-color:#c7d8f7;color:#12408f}
+  html[data-theme="light"] .gi-meta{color:#7c8798}
+  html[data-theme="light"] .gi-meta .st{color:#39404f}
+  html[data-theme="light"] .gi-bar{background:#e6ebf3}
+  html[data-theme="light"] .gc-box{background:#fff;border-color:#dfe5ee}
+  html[data-theme="light"] .gc-box textarea{color:#151a23}
+  html[data-theme="light"] .gen-empty{color:#7c8798}
+
+  /* 登录页 */
+  html[data-theme="light"] #loginView{background:#f4f6fa}
+  html[data-theme="light"] #loginView::before{background:radial-gradient(600px 340px at 50% 12%,rgba(79,131,224,.16),transparent 70%)}
+  html[data-theme="light"] .lg-card{background:#fff;border-color:#e2e7f0;box-shadow:0 30px 90px rgba(16,24,40,.14)}
+  html[data-theme="light"] .lg-brand span{border-left-color:#e2e7f0;color:#6b7686}
+  html[data-theme="light"] .lg-card h2{color:#0f131a}
+  html[data-theme="light"] .lg-card .desc{color:#5a6474}
+  html[data-theme="light"] .lg-server{background:#f7fafd;border-color:#e2e7f0;color:#4b5565}
+  html[data-theme="light"] .lg-server code{color:#0f131a}
+  html[data-theme="light"] .lg-field label{color:#6b7686}
+  html[data-theme="light"] .lg-field input{background:#fff;border-color:#dfe5ee;color:#151a23}
+  html[data-theme="light"] .lg-field input:focus{background:#fff;border-color:#9dbcec}
+  html[data-theme="light"] .lg-remember{color:#6b7686}
+  html[data-theme="light"] .lg-hint{border-top-color:#e9edf5;color:#7c8798}
+  html[data-theme="light"] .lg-hint b{color:#39404f}
+
+  /* 工作流控制页 */
+  html[data-theme="light"] #flowView{background:#f4f6fa}
+  html[data-theme="light"] .flow-top{background:#fff;border-bottom-color:#e2e7f0}
+  html[data-theme="light"] .flow-tt{color:#4b5565}
+  html[data-theme="light"] #flowFrame{background:#fff}
+
+  /* 共享 / 文档 / AI 页 */
+  html[data-theme="light"] .sv-frame-wrap{background:#eef2f8;border-color:#e2e7f0}
+  html[data-theme="light"] .sv-frame,
+  html[data-theme="light"] .sv-frame-mask{background:#eef2f8}
+  html[data-theme="light"] .sv-frame-mask{color:#6b7686}
+  html[data-theme="light"] .dcard{background:#fff;border-color:#e2e7f0}
+  html[data-theme="light"] .dcard:hover{border-color:#c6d4e6}
+  html[data-theme="light"] .dcard .dic{background:#ebf2ff;border-color:#d5e2fa;color:#12408f}
+  html[data-theme="light"] .dcard .dprev{color:#5a6474}
+  html[data-theme="light"] .doc-drop{border-color:#dbe3ef;color:#7c8798}
+  html[data-theme="light"] .doc-drop.over{background:#fffaf0;border-color:#d9b36c;color:#8a6420}
+  html[data-theme="light"] .doc-search input{background:#fff;border-color:#dfe5ee;color:#151a23}
+  html[data-theme="light"] .doc-panel{background:#fff;border-color:#e2e7f0;box-shadow:0 24px 70px rgba(16,24,40,.16)}
+  html[data-theme="light"] .doc-ph{border-bottom-color:#eef2f7}
+  html[data-theme="light"] .doc-row{background:#f9fbfe;border-color:#e9edf5}
+  html[data-theme="light"] .doc-row:hover{border-color:#d5deeb}
+  html[data-theme="light"] .doc-row .rtxt{color:#39404f}
+  html[data-theme="light"] .bub{background:#fff;border-color:#e2e7f0}
+  html[data-theme="light"] .bub.mine{background:#e8f0ff;border-color:#c7d8f7}
+  html[data-theme="light"] .clip-item{background:#fff;border-color:#e2e7f0;color:#39404f}
+  html[data-theme="light"] .fcard{background:#fff;border-color:#e2e7f0}
+  html[data-theme="light"] .fcard .prev{background:#eff3f9}
+
+  /* 公告 / 分享弹层 */
+  html[data-theme="light"] .nt-mask,
+  html[data-theme="light"] .lib-mask{background:rgba(17,24,39,.42)}
+  html[data-theme="light"] .nt-panel{background:#fff;border-color:#e2e7f0;box-shadow:0 24px 70px rgba(16,24,40,.16)}
+  html[data-theme="light"] .nt-line{background:#f9fbfe;border-color:#e9edf5;color:#39404f}
+  html[data-theme="light"] .nt-row textarea{background:#fff;border-color:#dfe5ee;color:#151a23}
+  html[data-theme="light"] .nt-row textarea:focus{border-color:#9dbcec}
+  html[data-theme="light"] .nt-del{background:#fdf0ef;border-color:#f2cfcb;color:#b4433c}
+  html[data-theme="light"] .nt-del:hover{background:#fbe3e1;border-color:#e0a7a2}
+  html[data-theme="light"] .nt-add{border-color:#cfd8e6;color:#2a4f96}
+  html[data-theme="light"] .nt-add:hover{border-color:#9db6dc;color:#0b3f9e}
+  html[data-theme="light"] .lib-panel{background:#fff;border-color:#e2e7f0;box-shadow:0 24px 70px rgba(16,24,40,.16)}
+  html[data-theme="light"] .lib-item{background:#f9fbfe;border-color:#e6ebf3}
+  html[data-theme="light"] .lib-item:hover{border-color:#a9c0e4}
+  html[data-theme="light"] .lib-item .lb-img{background:#eff3f9}
+  html[data-theme="light"] .lib-item .lb-ck{background:rgba(255,255,255,.85);border-color:#d5dce8;color:#7c8798}
+  html[data-theme="light"] .lib-item.on .lb-ck{background:#3f6bd8;border-color:#5b8cff;color:#fff}
+
+  /* 视频模式的彩色皮肤在白色主题下仍保留，但底改成浅色 */
+  html[data-theme="light"] body.vmode #homeView{background:#f6f3ff}
+  html[data-theme="light"] body.vmode #homeView::before{opacity:.22}
+  html[data-theme="light"] body.vmode #genView{background:#f7f5ff}
+  html[data-theme="light"] body.vmode #genView::before{opacity:.18}
+  html[data-theme="light"] body.vmode .notice-btn{background:rgba(255,255,255,.9);border-color:#e3daf5;color:#4b3f70}
+  html[data-theme="light"] body.vmode .nav-item.active{background:#efe8ff;color:#5b3fbf}
+
+  @media (max-width:760px){
+    .theme-btn{padding:0 9px}
+    .theme-btn [data-theme-tx]{display:none}
+  }
 </style>
 </head>
 <body>
@@ -827,6 +1072,9 @@
       <span>状态</span>
     </div>
     <div class="spacer"></div>
+    <button type="button" class="theme-rail" id="themeRail" onclick="toggleTheme()" title="切换到白色主题" data-theme-tip>
+      <span data-theme-ic>☀</span>
+    </button>
     <div class="avatar" id="meAvatar" onclick="logout()" title="已登录 ComfyUI，点击退出">C</div>
   </aside>
 
@@ -845,6 +1093,9 @@
         <input id="q" placeholder="搜索提示词" oninput="render()">
       </div>
       <div class="status"><span class="dot" id="dot"></span><span id="stText">连接中…</span></div>
+      <button type="button" class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="切换到白色主题" data-theme-tip>
+        <span class="ti" data-theme-ic>☀</span><span data-theme-tx>白色</span>
+      </button>
     </div>
 
     <div class="wfbar">
@@ -1269,6 +1520,22 @@
 
 <script>
 const $ = id => document.getElementById(id);
+
+// ---------- 主题：黑色（默认） / 白色 ----------
+function currentTheme(){ return document.documentElement.getAttribute('data-theme')==='light' ? 'light' : 'dark'; }
+function applyTheme(t, save){
+  const light = t==='light';
+  document.documentElement.setAttribute('data-theme', light?'light':'dark');
+  document.documentElement.style.colorScheme = light?'light':'dark';
+  if(save!==false){ try{ localStorage.setItem('cw_theme', light?'light':'dark'); }catch(e){} }
+  document.querySelectorAll('[data-theme-ic]').forEach(el=>{ el.textContent = light?'☾':'☀'; });
+  document.querySelectorAll('[data-theme-tx]').forEach(el=>{ el.textContent = light?'黑色':'白色'; });
+  document.querySelectorAll('[data-theme-tip]').forEach(el=>{ el.setAttribute('title', light?'切换到黑色主题':'切换到白色主题'); });
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.setAttribute('content', light?'#f4f6fa':'#000000');
+}
+function toggleTheme(){ applyTheme(currentTheme()==='light' ? 'dark' : 'light'); }
+applyTheme(currentTheme(), false);
 
 // ---------- 后端地址 / 会话 token（线上版直连远程后端用） ----------
 // 默认空 = 同源（本地 python server.py 直接跑）。

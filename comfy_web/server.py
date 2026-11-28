@@ -1231,18 +1231,37 @@ def _token_of(headers, query=None):
     return None
 
 
+def _tokens_of(headers, query=None):
+    """列出所有候选 token：Cookie / X-CW-Token 头 / ?t= 参数。
+
+    浏览器里可能残留一个已失效的 HttpOnly Cookie，而前端手里是刚换来的
+    有效 token；因此不能只认第一个，交给 session_of 逐个校验。
+    """
+    out = []
+    tok = _cookie_token(headers)
+    if tok:
+        out.append(tok)
+    tok = (headers.get("X-CW-Token") or "").strip()
+    if tok:
+        out.append(tok)
+    if query:
+        tok = (query.get("t") or [""])[0].strip()
+        if tok:
+            out.append(tok)
+    return out
+
+
 def session_of(headers, query=None):
-    tok = _token_of(headers, query)
-    if not tok:
-        return None
-    s = _sessions.get(tok)
-    if not s:
-        return None
-    if time.time() - s["ts"] > SESSION_TTL:
-        _sessions.pop(tok, None)
-        return None
-    s["ts"] = time.time()
-    return s
+    for tok in _tokens_of(headers, query):
+        s = _sessions.get(tok)
+        if not s:
+            continue
+        if time.time() - s["ts"] > SESSION_TTL:
+            _sessions.pop(tok, None)
+            continue
+        s["ts"] = time.time()
+        return s
+    return None
 
 
 # 启动时沿用上次验证过的凭据（没有就用默认 comfy / Comfy-5b51ea51）

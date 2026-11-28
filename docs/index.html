@@ -1180,7 +1180,8 @@
         </div>
         <div class="qslide">
           <span class="qs-ic">◲</span>
-          <input type="range" id="homeMp" min="0" max="7" step="1" value="0" oninput="onHomeMp(this.value)" title="生成像素大小">
+          <input type="range" id="homeMp" list="mpTicks" min="0" max="7" step="1" value="0" oninput="onHomeMp(this.value)" title="生成像素大小">
+          <datalist id="mpTicks"><option value="0"></option><option value="1"></option><option value="2"></option><option value="3"></option><option value="4"></option><option value="5"></option><option value="6"></option><option value="7"></option></datalist>
           <span class="qs-val" id="homeMpText">2.0 MP</span>
         </div>
         <div class="qs-hint" id="homeMpHint" style="display:none">20.0 MP 属于大图，生成耗时可能较长（建议先用小一档试效果）</div>
@@ -1249,7 +1250,7 @@
         </div>
         <div class="qslide">
           <span class="qs-ic">◲</span>
-          <input type="range" id="gcMp" min="0" max="7" step="1" value="0" oninput="onHomeMp(this.value)" title="生成像素大小">
+          <input type="range" id="gcMp" list="mpTicks" min="0" max="7" step="1" value="0" oninput="onHomeMp(this.value)" title="生成像素大小">
           <span class="qs-val" id="gcMpText">2.0 MP</span>
         </div>
         <div class="qs-hint" id="gcMpHint" style="display:none">20.0 MP 属于大图，生成耗时可能较长（建议先用小一档试效果）</div>
@@ -1472,7 +1473,7 @@
 
     <div class="field" id="mpField">
       <label>画质像素：<span id="mpLabel" style="color:var(--text)">2.0 MP</span></label>
-      <input type="range" class="range" id="mp" min="0" max="7" step="1" value="0" oninput="onHomeMp(this.value)">
+      <input type="range" class="range" id="mp" list="mpTicks" min="0" max="7" step="1" value="0" oninput="onHomeMp(this.value)">
       <div class="tip">8 档可选：2 / 3 / 4 / 5 / 10 / 12 / 16 / 20 MP；16G 显存建议 2–5 MP。</div>
     </div>
 

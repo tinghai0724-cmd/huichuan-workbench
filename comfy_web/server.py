@@ -1532,7 +1532,10 @@ EMBED_THEME_JS = """
     var b=document.getElementById('skinBtn'); if(b) b.textContent = d?'☀️':'🌙';
   }
   window.setCwTheme=setCwTheme;
-  try{ setCwTheme('light'); }catch(e){}
+  try{
+    var q=(location.search.match(/[?&]cwTheme=(dark|light)/)||[])[1];
+    setCwTheme(q || 'light');
+  }catch(e){}
   window.addEventListener('message', function(e){
     if(e && e.data && e.data.cwTheme) setCwTheme(e.data.cwTheme);
   });
@@ -1543,7 +1546,7 @@ EMBED_THEME_JS = """
 EMBED_AI_EXTRA = '<style>#skinBtn{display:none!important}</style>'
 
 
-def embed_patch(text, kind):
+def embed_patch(text, kind, html=True):
     """把第三方页面的资源/接口路径改到代理前缀，并注入主题钩子。"""
     prefix = "/embed/share" if kind == "share" else "/embed/ai"
     if kind == "share":
@@ -1562,6 +1565,8 @@ def embed_patch(text, kind):
         text = text.replace("'/assets/", "'%s/assets/" % prefix)
         head = ""
         extra = EMBED_AI_EXTRA
+    if not html:
+        return text                     # JS/CSS 只重写路径，不能注入 HTML
     if "</head>" in text:
         text = text.replace("</head>", head + EMBED_THEME_JS + extra + "</head>", 1)
     elif "</body>" in text:
@@ -1765,7 +1770,7 @@ class Handler(BaseHTTPRequestHandler):
             data = None
             if rewrite:
                 raw = r.read().decode("utf-8", "replace")
-                data = embed_patch(raw, kind).encode("utf-8")
+                data = embed_patch(raw, kind, "text/html" in ctype).encode("utf-8")
 
             self.send_response(r.status)
             for h in ("Content-Type", "Content-Disposition", "Accept-Ranges",

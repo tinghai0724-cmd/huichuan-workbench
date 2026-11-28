@@ -3360,7 +3360,7 @@ function reloadShareUI(){
   if(fr){ fr.src='about:blank'; setTimeout(()=>{ fr.src=shareUiUrl(); }, 40); }
   loadShare();
 }
-function openShareUI(){ window.open(shareUiUrl(), '_blank', 'noopener'); }
+function openShareUI(){ window.open(shareUiUrl()+'?cwTheme='+currentTheme(), '_blank', 'noopener'); }
 function shareFrameLoaded(){
   const fr=$('shareFrame');
   if(!fr || fr.src==='about:blank') return;
@@ -3403,7 +3403,7 @@ function reloadAIUI(){
   if(fr){ fr.src='about:blank'; setTimeout(()=>{ fr.src=aiUiUrl(); }, 40); }
   checkAI();
 }
-function openAIUI(){ window.open(aiUiUrl(), '_blank', 'noopener'); }
+function openAIUI(){ window.open(aiUiUrl()+'?cwTheme='+currentTheme(), '_blank', 'noopener'); }
 /* AI 页专属启动页：连上就淡出 */
 let aiSplashTimer=null;
 function aiSplashShow(){

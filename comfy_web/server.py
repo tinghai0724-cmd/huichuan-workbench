@@ -1560,8 +1560,11 @@ def embed_patch(text, kind, html=True):
     else:
         text = text.replace('"/api/', '"%s/api/' % prefix)
         text = text.replace('"/history/', '"%s/history/' % prefix)
+        text = text.replace('"/skills/', '"%s/skills/' % prefix)
         text = text.replace('"/assets/', '"%s/assets/' % prefix)
         text = text.replace("'/api/", "'%s/api/" % prefix)
+        text = text.replace("'/history/", "'%s/history/" % prefix)
+        text = text.replace("'/skills/", "'%s/skills/" % prefix)
         text = text.replace("'/assets/", "'%s/assets/" % prefix)
         head = ""
         extra = EMBED_AI_EXTRA

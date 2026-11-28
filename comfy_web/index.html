@@ -1685,8 +1685,8 @@ function isVideoFile(f){
 }
 function mediaThumb(f, cls, attrs){
   const url=imgUrl(f);
-  if(isVideoFile(f)) return `<video class="${cls||''}" src="${url}" ${attrs||'muted loop playsinline preload="metadata"'} autoplay></video>`;
-  return `<img class="${cls||''}" src="${url}" alt="">`;
+  if(isVideoFile(f)) return `<video class="${cls||''}" src="${url}" ${attrs||'muted loop playsinline preload="metadata"'}></video>`;
+  return `<img class="${cls||''}" src="${url}" alt="" loading="lazy" decoding="async">`;
 }
 function shareDl(id){return withToken(apiUrl('/api/share/download?id='+encodeURIComponent(id)))}
 function shortWf(n){return (n||'—').replace('.json','').replace(/^[【▶▷\s]+/,'').slice(0,14)}
@@ -2049,7 +2049,7 @@ function cardHtml(it){
   let media;
   const vid = st==='done'&&file&&isVideoFile(file);
   if(st==='done'&&file) media=vid
-    ? `${mediaThumb(file,'thumb')}<div class="vtag">🎬 视频</div>`
+    ? `${mediaThumb(file,'thumb','muted loop playsinline preload="metadata"')}<div class="vtag">🎬 视频</div>`
     : mediaThumb(file,'thumb');
   else if(st==='error') media=`<div class="skeleton" style="aspect-ratio:4/3;display:grid;place-items:center;animation:none;color:#ff9c85">生成失败<br><span style="font-size:11px;color:#77777f">点开看原因</span></div>`;
   else media=`<div class="skeleton" style="aspect-ratio:4/3;display:grid;place-items:center;color:#8f8f98;font-size:12px">排队 / 生成中…</div>`;

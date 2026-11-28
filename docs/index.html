@@ -1180,10 +1180,10 @@
         </div>
         <div class="qslide">
           <span class="qs-ic">◲</span>
-          <input type="range" id="homeMp" min="0" max="17" step="1" value="9" oninput="onHomeMp(this.value)" title="生成像素大小">
-          <span class="qs-val" id="homeMpText">1.0 MP · 1344 × 768</span>
+          <input type="range" id="homeMp" min="0" max="7" step="1" value="0" oninput="onHomeMp(this.value)" title="生成像素大小">
+          <span class="qs-val" id="homeMpText">2.0 MP</span>
         </div>
-        <div class="qs-hint" id="homeMpHint" style="display:none">4.0 MP 属于大图，生成耗时可能较长（建议先用小一档试效果）</div>
+        <div class="qs-hint" id="homeMpHint" style="display:none">20.0 MP 属于大图，生成耗时可能较长（建议先用小一档试效果）</div>
         <div class="qs-hint" id="homeSizeHint" style="display:none"></div>
       </div>
       <input type="file" id="homeFileInput" accept="image/*" multiple style="display:none">
@@ -1249,10 +1249,10 @@
         </div>
         <div class="qslide">
           <span class="qs-ic">◲</span>
-          <input type="range" id="gcMp" min="0" max="17" step="1" value="9" oninput="onHomeMp(this.value)" title="生成像素大小">
-          <span class="qs-val" id="gcMpText">1.0 MP · 1344 × 768</span>
+          <input type="range" id="gcMp" min="0" max="7" step="1" value="0" oninput="onHomeMp(this.value)" title="生成像素大小">
+          <span class="qs-val" id="gcMpText">2.0 MP</span>
         </div>
-        <div class="qs-hint" id="gcMpHint" style="display:none">4.0 MP 属于大图，生成耗时可能较长（建议先用小一档试效果）</div>
+        <div class="qs-hint" id="gcMpHint" style="display:none">20.0 MP 属于大图，生成耗时可能较长（建议先用小一档试效果）</div>
         <div class="qs-hint" id="gcSizeHint" style="display:none"></div>
       </div>
     </div>
@@ -1472,8 +1472,8 @@
 
     <div class="field" id="mpField">
       <label>画质像素：<span id="mpLabel" style="color:var(--text)">2.0 MP</span></label>
-      <input type="range" class="range" id="mp" min="0.2" max="4" step="0.1" value="1" oninput="syncMpLabel()">
-      <div class="tip">模型按 2048×2048 面积调优；16G 显存建议 2–4 MP。</div>
+      <input type="range" class="range" id="mp" min="0" max="7" step="1" value="0" oninput="onHomeMp(this.value)">
+      <div class="tip">8 档可选：2 / 3 / 4 / 5 / 10 / 12 / 16 / 20 MP；16G 显存建议 2–5 MP。</div>
     </div>
 
     <div class="inline">
@@ -1606,9 +1606,9 @@ const RATIOS = [
   ['9:16 (Portrait Widescreen)','9:16'],['16:9 (Widescreen)','16:9'],
   ['21:9 (Ultrawide)','21:9']
 ];
-// 像素档位：0.2–4.0 MP（multiple = 32），4.0 会提示耗时
-const MP_STEPS=[0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.98,1.0,1.2,1.5,1.8,2.0,2.5,3.0,3.5,4.0];
-const MP_MAX = 4.0;
+// 像素档位：8 档 2.0–20.0 MP（multiple = 32），三处滑块共用同一档位索引
+const MP_STEPS=[2.0,3.0,4.0,5.0,10.0,12.0,16.0,20.0];
+const MP_MAX = MP_STEPS[MP_STEPS.length-1];
 let STATE={items:[],jobs:{},workflows:[],default_workflow:''};
 let filter='all', ratioFilter='all', mode='single', current=null, pollTimer=null;
 // 参考图：最多 5 张，refImages 存 ComfyUI input 里的文件名，refUrls 存本地预览用的 objectURL
@@ -2173,8 +2173,7 @@ function applyViewMode(){
 
 // ---------- 首页 / 导航 ----------
 function updateQuickEst(){
-  const mp=($('mp')&&$('mp').value)||'1';
-  const txt=mpLabelText(mp);
+  const txt=mpLabelText(currentMp());
   if($('homeMpText')) $('homeMpText').textContent = txt;
   if($('gcMpText')) $('gcMpText').textContent = txt;
 }
@@ -2586,7 +2585,7 @@ function syncHomeWfUI(){
   if(typeof syncGenUI==='function') syncGenUI();
 }
 
-/* 像素档位：MP_STEPS 14 档（0.2–2.0），输出像素按 multiple=32 反算，标签同时显示 MP 与实际像素 */
+/* 像素档位：MP_STEPS 8 档（2.0–20.0），首页 / 生成页 / 抽屉三处滑块共用同一档位索引，输出像素按 multiple=32 反算 */
 function arOf(aspect){
   const s=ratioShort(aspect||curRatio)||'16:9';
   const [a,b]=s.split(':').map(Number);
@@ -2611,35 +2610,33 @@ function mpLabelText(mp){
   return `${mpNum(mp)} MP · ${w} × ${h}`;
 }
 function nearestMpIdx(v){
-  const mp=+v||1;
-  const idx=MP_STEPS.indexOf(mp);
-  if(idx>=0) return idx;
-  return MP_STEPS.reduce((best,x,i)=>Math.abs(x-mp)<Math.abs(MP_STEPS[best]-mp)?i:best,0);
+  const idx=Math.round(+v||0);
+  return Math.max(0, Math.min(MP_STEPS.length-1, idx));
 }
+function currentMp(){ return MP_STEPS[nearestMpIdx(($('mp')&&$('mp').value))]; }
 function syncMpEverywhere(){
-  const mpVal = Math.min(MP_MAX, +(($('mp')&&$('mp').value)||1));
-  const idx = nearestMpIdx(mpVal);
+  const idx = nearestMpIdx(($('mp')&&$('mp').value));
+  const mpVal = MP_STEPS[idx];
+  if($('mp') && +$('mp').value!==idx) $('mp').value=idx;
   ['homeMp','gcMp'].forEach(id=>{ const el=$(id); if(el && +el.value!==idx) el.value=idx; });
   ['homeMpText','gcMpText'].forEach(id=>{ const el=$(id); if(el) el.textContent=mpLabelText(mpVal); });
   if($('mpLabel')) $('mpLabel').textContent=mpLabelText(mpVal);
-  // 4MP 提醒：只在支持尺寸调节的流程上显示
-  const big = mpVal>=MP_MAX-0.001 && (!WF_NAME || sizeSupported());
+  // 20MP 提醒：只在支持尺寸调节的流程上显示
+  const big = idx===MP_STEPS.length-1 && (!WF_NAME || sizeSupported());
   ['homeMpHint','gcMpHint'].forEach(id=>{ const el=$(id); if(el) el.style.display = big?'block':'none'; });
   updateQuickEst();
   if(typeof syncSizeUI==='function') syncSizeUI();
 }
 function onHomeMp(idx){
-  const v = MP_STEPS[+idx] ?? 1;
-  $('mp').value = v;
-  ['homeMp','gcMp'].forEach(id=>{ const el=$(id); if(el) el.value=+idx; });
+  const i = nearestMpIdx(idx);
+  $('mp').value = i;
   syncMpEverywhere();
-  if(v>=MP_MAX-0.001) toast('已切到 4.0 MP 大图，生成耗时可能较长');
+  if(i===MP_STEPS.length-1) toast('已切到 20.0 MP 大图，生成耗时可能较长');
 }
 function cycleMp(){
-  const cur=+($('mp').value||1);
-  const next=MP_STEPS[(nearestMpIdx(cur)+1)%MP_STEPS.length] ?? MP_STEPS[9];
+  const next=(nearestMpIdx(($('mp')&&$('mp').value))+1)%MP_STEPS.length;
   $('mp').value=next; syncMpEverywhere();
-  toast(`像素 ${mpLabelText(next)}`);
+  toast(`像素 ${mpLabelText(MP_STEPS[next])}`);
 }
 function setRatioFrom(v){
   if(!v) return;
@@ -2662,6 +2659,7 @@ function syncSizeUI(){
   const msg = ok ? '' : `「${shortWf(WF_NAME)}」这张工作流的尺寸是固定的，画幅比例和像素大小都不支持调节`;
   ['homeRatioWrap','gcRatioWrap'].forEach(id=>{ const el=$(id); if(el) el.classList.toggle('off', !ok); });
   ['homeMp','gcMp'].forEach(id=>{ const el=$(id); if(el) el.disabled=!ok; });
+  if($('mp')) $('mp').disabled=!ok;
   ['homeMpText','gcMpText'].forEach(id=>{ const el=$(id); if(el) el.style.opacity = ok?'':'0.45'; });
   ['homeSizeHint','gcSizeHint'].forEach(id=>{
     const el=$(id); if(!el) return;
@@ -2790,7 +2788,7 @@ async function homeGenerate(){
   btn.disabled=true; const old=btn.textContent; btn.textContent='提交中…';
   const payload={...payloadBase(), prompt:t};
   // 一开始生成，首页立即切换为生成过程页
-  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:+$('mp').value, duration:payload.duration, image:refImages[0]||null, images:refImages.slice(), video:(OUT_MODE==='video')};
+  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:currentMp(), duration:payload.duration, image:refImages[0]||null, images:refImages.slice(), video:(OUT_MODE==='video')};
   genPid=null;
   $('homePrompt').value='';
   openGenView();
@@ -2986,7 +2984,7 @@ async function genGenerate(){
   const btn=$('gcGen'); if(btn.disabled) return;
   btn.disabled=true; const old=btn.textContent; btn.textContent='提交中…';
   const payload={...payloadBase(), prompt:t};
-  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:+$('mp').value, duration:payload.duration, image:refImages[0]||null, images:refImages.slice()};
+  genPending={prompt:t, workflow:WF_NAME, aspect:curRatio, megapixels:currentMp(), duration:payload.duration, image:refImages[0]||null, images:refImages.slice()};
   genPid=null;
   renderThread(true);
   try{
@@ -3095,7 +3093,7 @@ function payloadBase(){
   return {
     workflow: WF_NAME,
     aspect: c.size_mode!=='none' ? curRatio : null,
-    megapixels: c.size_mode!=='none' ? Math.min(MP_MAX, +$('mp').value) : null,
+    megapixels: c.size_mode!=='none' ? currentMp() : null,
     seed: $('seed').value.trim() || -1,   // 留空即 -1（ComfyUI 的随机语义）
     image: refImages[0]||null,
     images: refImages.slice(),
